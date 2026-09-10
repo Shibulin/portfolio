@@ -1,0 +1,9 @@
+{
+  "name": "portfolio",
+  "version": "1.0.0",
+  "private": true,
+  "description": "林子滟 · 求职作品集（纯静态站）",
+  "scripts": {
+    "build": "rm -rf dist && mkdir -p dist && cp index.html dist/ && cp -r assets dist/"
+  }
+}
