@@ -139,24 +139,22 @@ a:hover { text-decoration: underline; }
     position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 0; display: block;
 }
 
-/* 截图位（统一高度 220px，object-fit 居中裁切） */
-.shots { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 4px; align-items: stretch; }
+/* 截图位：统一高度、按原图比例完整展示（不裁切）；窄屏横向滚动 */
+.shots {
+    display: flex; flex-wrap: nowrap; gap: 10px; align-items: flex-start;
+    justify-content: safe center;
+    overflow-x: auto; overflow-y: hidden;
+    padding-bottom: 4px; margin-bottom: 4px;
+    -webkit-overflow-scrolling: touch;
+}
 img.shot {
-    width: 100%; height: 220px; display: block; border-radius: 6px;
-    object-fit: cover; object-position: center;
-    box-shadow: 0 0 0 1px var(--line);
-}
-
-/* 星眠专用：4 张图原比例一排展示，统一高度、宽度按原图、不裁切 */
-.shots.shots-row {
-    display: flex; flex-wrap: nowrap; gap: 10px;
-    overflow-x: auto; align-items: flex-start;
-}
-.shots.shots-row img.shot {
-    width: auto; height: 220px; flex: 0 0 auto;
+    width: auto; height: 140px; flex: 0 0 auto; display: block; border-radius: 6px;
     object-fit: contain; object-position: center;
     background: #f1f5fb;
+    box-shadow: 0 0 0 1px var(--line);
 }
+/* 星眠：4 张为手机竖屏截图，保留 220px 展示高度 */
+.shots.shots-row img.shot { height: 220px; }
 
 /* 链接 */
 .links { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
@@ -192,7 +190,7 @@ img.shot {
     .facts { grid-template-columns: 1fr; max-width: 320px; }
     .stack-row { flex-direction: column; gap: 6px; }
     .stack-k { flex: none; }
-    .shots { grid-template-columns: repeat(2, 1fr); }
+    img.shot { height: 130px; }
     .contact-list { grid-template-columns: 1fr; }
     .nav-links { display: none; }
     .pj { padding: 18px 16px; }
