@@ -1,0 +1,17 @@
+# 小智 · 儿童 AI 聊天机器人 — 运行依赖
+# 安装： pip install -r requirements.txt
+
+# 大模型接入（OpenAI 兼容协议，指向阿里云百炼 DashScope）
+openai>=1.0.0
+
+# Web 服务
+flask
+flask-cors
+
+# 数据处理
+numpy
+
+# ---- 语音交互功能所需（体积较大，按需安装）----
+# scipy
+# torch
+# pyaudio

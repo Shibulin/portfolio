@@ -1,0 +1,9 @@
+# TextRoom · AI 文字密室逃脱 — 运行依赖
+# 安装： pip install -r requirements.txt
+
+# Web 框架（含 Pydantic 数据校验）
+fastapi
+uvicorn[standard]
+
+# ---- 冒烟测试所需（可选）----
+# playwright
