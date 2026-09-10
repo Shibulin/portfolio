@@ -130,31 +130,54 @@ a:hover { text-decoration: underline; }
     border-radius: 4px; padding: 1px 8px; margin-left: 8px; vertical-align: 2px; font-weight: 400;
 }
 
-/* 视频位（16:9 自适应） */
+/* 视频位：默认 16:9 兜底，实际由下方 vb1~vb5 按各视频自身比例覆盖 */
 .video-box {
     position: relative; width: 100%; padding-top: 56.25%;
-    margin-bottom: 10px; border-radius: 6px; overflow: hidden; background-color: #000000;
+    margin-bottom: 10px; border-radius: 6px; overflow: hidden; background-color: #0e1626;
 }
+/* 视频位：高度跟随各视频自身比例 → 封面/画面均铺满，无黑边、不裁切 */
+.video-box.vb1 { padding-top: 54.054%; }  /* p01 1332x720 */
+.video-box.vb2 { padding-top: 62.963%; }  /* p02 864x544 */
+.video-box.vb3 { padding-top: 50.000%; }  /* p03 1440x720 */
+.video-box.vb4 { padding-top: 56.250%; }  /* p04 1280x720 */
+.video-box.vb5 { padding-top: 54.054%; }  /* p05 1332x720 */
 .video-box video, .video-box iframe {
     position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 0; display: block;
 }
 
-/* 截图位：统一高度、按原图比例完整展示（不裁切）；窄屏横向滚动 */
+/* 截图位：宽度按原图宽高比瓜分整行 → 组内图片等高且左右铺满（与文字对齐），按原比例完整显示不裁切 */
 .shots {
     display: flex; flex-wrap: nowrap; gap: 10px; align-items: flex-start;
-    justify-content: safe center;
-    overflow-x: auto; overflow-y: hidden;
-    padding-bottom: 4px; margin-bottom: 4px;
-    -webkit-overflow-scrolling: touch;
+    margin-bottom: 4px;
 }
 img.shot {
-    width: auto; height: 140px; flex: 0 0 auto; display: block; border-radius: 6px;
-    object-fit: contain; object-position: center;
-    background: #f1f5fb;
+    /* 宽度按原图比例瓜分整行：默认比例 1.5 兜底，真实比例见下方 AR-RULES
+       （数值写死在样式表，不依赖内联样式 / CSS 变量）→ 组内等高 + 左右铺满 + 不裁切 */
+    flex: var(--ar, 1.5) 1 0;
+    min-width: 0; width: auto; height: auto; display: block;
+    border-radius: 6px; background: #f1f5fb;
     box-shadow: 0 0 0 1px var(--line);
 }
-/* 星眠：4 张为手机竖屏截图，保留 220px 展示高度 */
-.shots.shots-row img.shot { height: 220px; }
+
+/* >>> AR-RULES（由 portfolio-工具/_apply_ar.py 生成，勿手改；换图后重跑脚本） */
+.shots.p1 img.shot:nth-child(1) { flex-grow: 1.7785 }  /* 01-1.png */
+.shots.p1 img.shot:nth-child(2) { flex-grow: 1.7782 }  /* 01-2.png */
+.shots.p1 img.shot:nth-child(3) { flex-grow: 1.7778 }  /* 01-3.png */
+.shots.p2 img.shot:nth-child(1) { flex-grow: 1.6 }  /* 02-1.png */
+.shots.p2 img.shot:nth-child(2) { flex-grow: 1.6 }  /* 02-2.png */
+.shots.p2 img.shot:nth-child(3) { flex-grow: 1.6 }  /* 02-3.png */
+.shots.p3 img.shot:nth-child(1) { flex-grow: 2.0039 }  /* 03-1.png */
+.shots.p3 img.shot:nth-child(2) { flex-grow: 1.993 }  /* 03-2.png */
+.shots.p3 img.shot:nth-child(3) { flex-grow: 2.0008 }  /* 03-3.png */
+.shots.p4 img.shot:nth-child(1) { flex-grow: 1.7818 }  /* 04-1.png */
+.shots.p4 img.shot:nth-child(2) { flex-grow: 1.7807 }  /* 04-2.png */
+.shots.p4 img.shot:nth-child(3) { flex-grow: 1.7785 }  /* 04-3.png */
+.shots.p5 img.shot:nth-child(1) { flex-grow: 1.4085 }  /* 05-1.png */
+.shots.p5 img.shot:nth-child(2) { flex-grow: 0.4637 }  /* 05-2.png */
+.shots.p5 img.shot:nth-child(3) { flex-grow: 0.4598 }  /* 05-3.png */
+.shots.p5 img.shot:nth-child(4) { flex-grow: 0.462 }  /* 05-5.png */
+.shots.p5 img.shot:nth-child(5) { flex-grow: 0.4593 }  /* 05-4.png */
+/* <<< AR-RULES */
 
 /* 链接 */
 .links { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
@@ -190,7 +213,8 @@ img.shot {
     .facts { grid-template-columns: 1fr; max-width: 320px; }
     .stack-row { flex-direction: column; gap: 6px; }
     .stack-k { flex: none; }
-    img.shot { height: 130px; }
+    /* 窄屏同样按原图比例瓜分整行宽度（与桌面/PDF 版一致）——左右铺满、不留空白、不裁切、无需横向滑动 */
+    .shots { gap: 8px; }
     .contact-list { grid-template-columns: 1fr; }
     .nav-links { display: none; }
     .pj { padding: 18px 16px; }
@@ -221,7 +245,7 @@ img.shot {
 <div class="hero" data-page-node-id="TBkMQnwLVDG1itBDV5PYeT">
     <div class="hero-inner" data-page-node-id="cbYe7SUdkkUrsYvCPAgo2s">
         <h1 data-page-node-id="0H2lH4eEvajb4Y97VFeeB9">林子滟</h1>
-        <p class="tagline" data-page-node-id="fLUL1KQJUmGgUTgbVrhGvh">2026 届 · 数字媒体技术 ｜ 5 个项目均附演示视频，3 个附源码，其中 2 个为个人独立完成</p>
+        <p class="tagline" data-page-node-id="fLUL1KQJUmGgUTgbVrhGvh">2026 届 · 数字媒体技术 · 随时到岗 ｜ 独立完成 AI 聊天机器人与全栈 Web 应用，5 个项目均附演示视频，3 个附源码</p>
         <div class="btn-row" data-page-node-id="5xwPD8TC1Sehyl15UW8JDt">
             <a class="btn btn-primary" href="#works" data-page-node-id="wcYGrfUxWqWUY55XLK4hk9">查看项目</a>
             <a class="btn btn-ghost" href="https://github.com/Shibulin" target="_blank" rel="noopener" data-page-node-id="vIVlNAnuBsppjDBRfzFUCU">GitHub 源码</a>
@@ -241,15 +265,15 @@ img.shot {
         <div class="meta" data-page-node-id="bRvxzX1k3mZejVWcokiYBh">2025.03 - 2025.06 ｜ 个人项目，独立完成</div>
 
         <!-- 视频：把导出的 mp4 命名为 p01.mp4 放进 assets/videos/ 即可播放 -->
-        <div class="video-box" data-page-node-id="Se8dlYpSkWJeZYRfjItqRp">
-            <video src="assets/videos/p01.mp4" controls preload="none" loading="lazy" playsinline data-page-node-id="WC6H4sqqC8pb6lByDxWxBU"></video>
+        <div class="video-box vb1" data-page-node-id="Se8dlYpSkWJeZYRfjItqRp">
+            <video poster="assets/videos/p01-cover.jpg" src="assets/videos/p01.mp4" controls preload="none" loading="lazy" playsinline data-page-node-id="WC6H4sqqC8pb6lByDxWxBU"></video>
         </div>
 
         <!-- 截图：把这三个 div 换成 <img src="assets/shots/01-1.png" alt="说明"> 即可 -->
-        <div class="shots" data-page-node-id="m1RrbKiQ0JWCsBNdRdBV6Y">
-            <img class="shot" src="assets/shots/01-1.png" alt="聊天主界面" loading="lazy">
-            <img class="shot" src="assets/shots/01-2.png" alt="语音输入识别中" loading="lazy">
-            <img class="shot" src="assets/shots/01-3.png" alt="对话摘要与内容安全提示" loading="lazy">
+        <div class="shots p1" data-page-node-id="m1RrbKiQ0JWCsBNdRdBV6Y">
+            <img class="shot" style="--ar:1.7785" src="assets/shots/01-1.png" alt="聊天主界面" loading="lazy">
+            <img class="shot" style="--ar:1.7782" src="assets/shots/01-2.png" alt="语音输入识别中" loading="lazy">
+            <img class="shot" style="--ar:1.7778" src="assets/shots/01-3.png" alt="对话摘要与内容安全提示" loading="lazy">
         </div>
 
         <h5 data-page-node-id="bLsQMg8vnyHjdPJZAOMVTG">要解决的问题</h5>
@@ -291,15 +315,15 @@ img.shot {
         <div class="meta" data-page-node-id="9YEebI8oFsfZ4ZEpbF1xyD">2026.08 ｜ 个人项目，独立完成</div>
 
         <!-- 视频：把导出的 mp4 命名为 p02.mp4 放进 assets/videos/ 即可播放 -->
-        <div class="video-box" data-page-node-id="zCb3pP32xn2oEqPhUBHn0a">
-            <video src="assets/videos/p02.mp4" controls preload="none" loading="lazy" playsinline data-page-node-id="aDhF6odd3Xl3GW7TrIuUaf"></video>
+        <div class="video-box vb2" data-page-node-id="zCb3pP32xn2oEqPhUBHn0a">
+            <video poster="assets/videos/p02-cover.jpg" src="assets/videos/p02.mp4" controls preload="none" loading="lazy" playsinline data-page-node-id="aDhF6odd3Xl3GW7TrIuUaf"></video>
         </div>
 
         <!-- 截图：把这三个 div 换成 <img src="assets/shots/02-1.png" alt="说明"> 即可 -->
-        <div class="shots" data-page-node-id="cLkrUQfHlVw8FAKvi9VvHm">
-            <img class="shot" src="assets/shots/02-1.png" alt="密室全景与可点击热点" loading="lazy">
-            <img class="shot" src="assets/shots/02-2.png" alt="道具特写与线索栏" loading="lazy">
-            <img class="shot" src="assets/shots/02-3.png" alt="键盘式密码盘交互" loading="lazy">
+        <div class="shots p2" data-page-node-id="cLkrUQfHlVw8FAKvi9VvHm">
+            <img class="shot" style="--ar:1.6" src="assets/shots/02-1.png" alt="密室全景与可点击热点" loading="lazy">
+            <img class="shot" style="--ar:1.6" src="assets/shots/02-2.png" alt="道具特写与线索栏" loading="lazy">
+            <img class="shot" style="--ar:1.6" src="assets/shots/02-3.png" alt="键盘式密码盘交互" loading="lazy">
         </div>
 
         <h5 data-page-node-id="gRSjF4X85iyriAeSH03tDX">要解决的问题</h5>
@@ -343,15 +367,15 @@ img.shot {
         <div class="meta" data-page-node-id="0n4GAJScChpmITwJxD85RM">2025.05 - 2025.06 ｜ 团队项目（整体约 20 人分多组协作）｜ 独立完成全部前端开发</div>
 
         <!-- 视频：把导出的 mp4 命名为 p03.mp4 放进 assets/videos/ 即可播放 -->
-        <div class="video-box" data-page-node-id="AsjNnvZUlWmDzdMoEYiYwK">
-            <video src="assets/videos/p03.mp4" controls preload="none" loading="lazy" playsinline data-page-node-id="CnDU9FYTHOUBmcbNr3vS72"></video>
+        <div class="video-box vb3" data-page-node-id="AsjNnvZUlWmDzdMoEYiYwK">
+            <video poster="assets/videos/p03-cover.jpg" src="assets/videos/p03.mp4" controls preload="none" loading="lazy" playsinline data-page-node-id="CnDU9FYTHOUBmcbNr3vS72"></video>
         </div>
 
         <!-- 截图：把这三个 div 换成 <img src="assets/shots/03-1.png" alt="说明"> 即可 -->
-        <div class="shots" data-page-node-id="kbvpXqoNJfyajK42G9JI7W">
-            <img class="shot" src="assets/shots/03-1.png" alt="开场文物介绍页" loading="lazy">
-            <img class="shot" src="assets/shots/03-2.png" alt="对局进行中" loading="lazy">
-            <img class="shot" src="assets/shots/03-3.png" alt="结算与历史排行榜" loading="lazy">
+        <div class="shots p3" data-page-node-id="kbvpXqoNJfyajK42G9JI7W">
+            <img class="shot" style="--ar:2.0039" src="assets/shots/03-1.png" alt="开场文物介绍页" loading="lazy">
+            <img class="shot" style="--ar:1.993" src="assets/shots/03-2.png" alt="对局进行中" loading="lazy">
+            <img class="shot" style="--ar:2.0008" src="assets/shots/03-3.png" alt="结算与历史排行榜" loading="lazy">
         </div>
 
         <h5 data-page-node-id="kUheQwPC82GF6FrC1SNORd">要解决的问题</h5>
@@ -388,15 +412,15 @@ img.shot {
         <div class="meta" data-page-node-id="w32FW3W0eYN19FOqK5qt1R">团队项目（3 人小组，担任组长）</div>
 
         <!-- 视频：把导出的 mp4 命名为 p04.mp4 放进 assets/videos/ 即可播放 -->
-        <div class="video-box" data-page-node-id="X74b9v6ljHBZsB6RAtHxAr">
-            <video src="assets/videos/p04.mp4" controls preload="none" loading="lazy" playsinline data-page-node-id="Uhco55jzHPl8wyoN48UuFE"></video>
+        <div class="video-box vb4" data-page-node-id="X74b9v6ljHBZsB6RAtHxAr">
+            <video poster="assets/videos/p04-cover.jpg" src="assets/videos/p04.mp4" controls preload="none" loading="lazy" playsinline data-page-node-id="Uhco55jzHPl8wyoN48UuFE"></video>
         </div>
 
         <!-- 截图：把这三个 div 换成 <img src="assets/shots/04-1.png" alt="说明"> 即可 -->
-        <div class="shots" data-page-node-id="0igYveLOFpNLMTn4T6Bh6R">
-            <img class="shot" src="assets/shots/04-1.png" alt="水墨风主菜单" loading="lazy">
-            <img class="shot" src="assets/shots/04-2.png" alt="双模式选择" loading="lazy">
-            <img class="shot" src="assets/shots/04-3.png" alt="药柜合成与问诊界面" loading="lazy">
+        <div class="shots p4" data-page-node-id="0igYveLOFpNLMTn4T6Bh6R">
+            <img class="shot" style="--ar:1.7818" src="assets/shots/04-1.png" alt="水墨风主菜单" loading="lazy">
+            <img class="shot" style="--ar:1.7807" src="assets/shots/04-2.png" alt="双模式选择" loading="lazy">
+            <img class="shot" style="--ar:1.7785" src="assets/shots/04-3.png" alt="药柜合成与问诊界面" loading="lazy">
         </div>
 
         <h5 data-page-node-id="gFXTA36GrU3vtqFGiiFgLQ">要解决的问题</h5>
@@ -436,17 +460,17 @@ img.shot {
         <div class="meta-note" data-page-node-id="xM1aQsL9pK7TnW2eVjZ3Ry">本项目截图与关键实现仅展示本人在该项目里负责的部分，其余由团队成员完成。</div>
 
         <!-- 视频：把导出的 mp4 命名为 p05.mp4 放进 assets/videos/ 即可播放 -->
-        <div class="video-box" data-page-node-id="WSMgS1Nj4mvIrwYz60NWMq">
-            <video src="assets/videos/p05.mp4" controls preload="none" loading="lazy" playsinline data-page-node-id="soR0UzQ9XLas1jg6veJO3w"></video>
+        <div class="video-box vb5" data-page-node-id="WSMgS1Nj4mvIrwYz60NWMq">
+            <video poster="assets/videos/p05-cover.jpg" src="assets/videos/p05.mp4" controls preload="none" loading="lazy" playsinline data-page-node-id="soR0UzQ9XLas1jg6veJO3w"></video>
         </div>
 
         <!-- 截图：把这三个 div 换成 <img src="assets/shots/05-1.png" alt="说明"> 即可 -->
-        <div class="shots shots-row" data-page-node-id="B4jC0EymrCdsE3teseTFHe">
-            <img class="shot" src="assets/shots/05-1.png" alt="APP 首页" loading="lazy">
-            <img class="shot" src="assets/shots/05-2.png" alt="探索·睡前页" loading="lazy">
-            <img class="shot" src="assets/shots/05-3.png" alt="助眠音播放页" loading="lazy">
-            <img class="shot" src="assets/shots/05-5.png" alt="腹部呼吸训练页" loading="lazy">
-            <img class="shot" src="assets/shots/05-4.png" alt="Figma 页面总览与设计规范" loading="lazy">
+        <div class="shots shots-row p5" data-page-node-id="B4jC0EymrCdsE3teseTFHe">
+            <img class="shot" style="--ar:1.4085" src="assets/shots/05-1.png" alt="APP 首页" loading="lazy">
+            <img class="shot" style="--ar:0.4637" src="assets/shots/05-2.png" alt="探索·睡前页" loading="lazy">
+            <img class="shot" style="--ar:0.4598" src="assets/shots/05-3.png" alt="助眠音播放页" loading="lazy">
+            <img class="shot" style="--ar:0.462" src="assets/shots/05-5.png" alt="腹部呼吸训练页" loading="lazy">
+            <img class="shot" style="--ar:0.4593" src="assets/shots/05-4.png" alt="Figma 页面总览与设计规范" loading="lazy">
         </div>
 
         <h5 data-page-node-id="nyz01kK1VP6Z2UmRQU3RCe">要解决的问题</h5>
