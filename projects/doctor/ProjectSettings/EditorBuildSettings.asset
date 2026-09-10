@@ -1,0 +1,26 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!1045 &1
+EditorBuildSettings:
+  m_ObjectHideFlags: 0
+  serializedVersion: 2
+  m_Scenes:
+  - enabled: 1
+    path: Assets/Scenes/PracticeScene.unity
+    guid: 2cda990e2423bbf4892e6590ba056729
+  - enabled: 1
+    path: Assets/Scenes/MainMenuScene.unity
+    guid: 5a17d2e9f6178de4e95f1c13f749e273
+  - enabled: 1
+    path: Assets/Scenes/DocterScene1.unity
+    guid: db807389d3d558b40abe8f5bd66ee79d
+  - enabled: 1
+    path: Assets/Scenes/SelectScenes.unity
+    guid: 6cab53880bda0f44e82566d37bc45399
+  - enabled: 1
+    path: Assets/Scenes/1111.unity
+    guid: cde87c6e6a441b2409158cf8777f55e8
+  - enabled: 1
+    path: Assets/Scenes/DocterScene2.unity
+    guid: 4e9c8b22c52307940b1cd21d81fa68ce
+  m_configObjects: {}

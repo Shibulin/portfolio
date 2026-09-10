@@ -1,0 +1,110 @@
+{
+  "format_version": 1,
+  "image_root": "/assets",
+  "style": {
+    "size": "16:9",
+    "resolution": "1600x900",
+    "placeholder_note": "当前为 SVG 占位图路径；批量 AI 生图后替换为 PNG 即可，文件名不变。"
+  },
+  "scenes": {
+    "study": {
+      "name": "旧书房",
+      "panorama": "/assets/study/panorama.png",
+      "objects": {
+        "bookshelf": {
+          "name": "书架",
+          "closeup": "/assets/study/bookshelf.png"
+        },
+        "desk": {
+          "name": "书桌",
+          "closeup": "/assets/study/desk.png"
+        },
+        "picture_frame": {
+          "name": "画框",
+          "closeup": "/assets/study/picture_frame.png"
+        },
+        "clock": {
+          "name": "钟表",
+          "closeup": "/assets/study/clock.png"
+        },
+        "safe": {
+          "name": "保险箱",
+          "closeup": "/assets/study/safe.png"
+        },
+        "door": {
+          "name": "书房门",
+          "closeup": "/assets/study/door.png"
+        }
+      }
+    },
+    "living_room": {
+      "name": "客厅",
+      "panorama": "/assets/living_room/panorama.png",
+      "objects": {
+        "main_gate": {
+          "name": "大门",
+          "closeup": "/assets/living_room/main_gate.png",
+          "interactive": false
+        },
+        "garage_door": {
+          "name": "车库门",
+          "closeup": "/assets/living_room/garage_door.png"
+        },
+        "coffee_table": {
+          "name": "茶几",
+          "closeup": "/assets/living_room/coffee_table.png"
+        },
+        "fridge": {
+          "name": "冰箱门",
+          "closeup": "/assets/living_room/fridge.png"
+        },
+        "wall_clock": {
+          "name": "墙上挂钟",
+          "closeup": "/assets/living_room/wall_clock.png"
+        },
+        "tv_cabinet": {
+          "name": "电视柜",
+          "closeup": "/assets/living_room/tv_cabinet.png"
+        },
+        "sofa": {
+          "name": "沙发",
+          "closeup": "/assets/living_room/sofa.png"
+        },
+        "fish_tank": {
+          "name": "角落鱼缸",
+          "closeup": "/assets/living_room/fish_tank.png"
+        }
+      }
+    },
+    "garage": {
+      "name": "车库",
+      "panorama": "/assets/garage/panorama.png",
+      "objects": {
+        "exit_door": {
+          "name": "卷帘门",
+          "closeup": "/assets/garage/exit_door.png"
+        },
+        "keypad": {
+          "name": "电子屏",
+          "closeup": "/assets/garage/keypad.png"
+        },
+        "remote": {
+          "name": "遥控器",
+          "closeup": "/assets/garage/remote.png"
+        },
+        "car": {
+          "name": "汽车",
+          "closeup": "/assets/garage/car.png"
+        },
+        "tool_board": {
+          "name": "挂墙工具板",
+          "closeup": "/assets/garage/tool_board.png"
+        },
+        "tool_box": {
+          "name": "工具箱",
+          "closeup": "/assets/garage/tool_box.png"
+        }
+      }
+    }
+  }
+}

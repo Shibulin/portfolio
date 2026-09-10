@@ -1,0 +1,42 @@
+# ===== 通用 =====
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ===== Python =====
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+*.log
+
+# ===== 敏感文件（绝不能提交）=====
+.env
+.env.*
+!.env.example
+
+# ===== Node =====
+node_modules/
+dist/
+.cache/
+
+# ===== Playwright =====
+.pw-browsers/
+
+# ===== Unity（医道求真）=====
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Ll]ogs/
+[Uu]serSettings/
+[Bb]uild/
+[Bb]uilds/
+*.csproj
+*.sln
+*.user
+
+# ===== 压缩包 =====
+*.zip
+*.7z
+*.rar

@@ -1,0 +1,2890 @@
+# 单元格1：导入所有库
+import sys
+import time
+import random
+import json
+import os
+from datetime import datetime
+import importlib.metadata
+
+print("导入所需库")
+print("-" * 40)
+
+# 检查Python版本
+print(f"Python版本: {sys.version.split()[0]}")
+
+# 导入openai
+try:
+    import openai
+    from openai import OpenAI
+    print(f"√ OpenAI 导入成功 (版本: {openai.__version__})")
+except ImportError as e:
+    print(f"× OpenAI 导入失败: {e}")
+
+# 导入flask
+try:
+    import flask
+    from flask import Flask, request, jsonify
+    from flask_cors import CORS
+    
+    # 使用importlib获取版本
+    flask_version = importlib.metadata.version("flask")
+    print(f"√ Flask 导入成功 (版本: {flask_version})")
+    
+    
+except ImportError as e:
+    print(f"× Flask 导入失败")
+
+
+
+# 单元格2：加载配置文件
+
+
+print("加载配置文件")
+print("-" * 40)
+try:
+    from config import API_KEY, BASE_URL, MODEL_NAME, SYSTEM_PROMPT, TEMPERATURE, BOT_NAME
+    print(f"√ config.py 导入成功")
+    print(f"  - 机器人名字: {BOT_NAME}")
+    print(f"  - 模型: {MODEL_NAME}")
+    print(f"  - 温度: {TEMPERATURE}")
+    print(f"  - API Key: {API_KEY[:10]}...")
+    
+    # 初始化客户端
+    client = OpenAI(
+        api_key=API_KEY,
+        base_url=BASE_URL,
+    )
+    print(f"√ OpenAI客户端初始化成功")
+    
+except ImportError as e:
+    print(f"× config.py 导入失败: {e}")
+    print("  请确保config.py文件存在")
+    BOT_NAME = "小智"
+    MODEL_NAME = "deepseek-v3.2"
+    TEMPERATURE = 0.8
+    API_KEY = ""
+    BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    SYSTEM_PROMPT = "你是一个陪伴5-12岁小朋友的聊天伙伴。"
+    
+except Exception as e:
+    print(f"× 初始化失败: {e}")
+
+#单元格3：加载敏感词库
+
+print("加载敏感词库")
+print("-" * 40)
+
+try:
+    import safety_words
+    print(f"√ safety_words.py 导入成功")
+    print(f"  - 暴力相关: {len(safety_words.VIOLENCE_WORDS)}个")
+    print(f"  - 脏话相关: {len(safety_words.BAD_WORDS)}个")
+    print(f"  - 色情相关: {len(safety_words.ADULT_WORDS)}个")
+    print(f"  - 其他不宜: {len(safety_words.OTHER_BAD_WORDS)}个")
+    print(f"  - 部分敏感字: {len(safety_words.PARTIAL_SENSITIVE_CHARS)}个")
+    print(f"  - 友好回复: {len(safety_words.FRIENDLY_REPLIES)}条")
+    
+    ALL_SENSITIVE_WORDS = safety_words.ALL_SENSITIVE_WORDS
+    FRIENDLY_REPLIES = safety_words.FRIENDLY_REPLIES
+    PARTIAL_SENSITIVE_CHARS = safety_words.PARTIAL_SENSITIVE_CHARS
+    
+except ImportError as e:
+    print(f"× safety_words.py 导入失败: {e}")
+    print("  使用默认敏感词库")
+    
+    # 默认敏感词库（简化版）
+    ALL_SENSITIVE_WORDS = ["笨蛋", "傻瓜", "去死", "打死", "杀人", "色情", "成人"]
+    FRIENDLY_REPLIES = ["我们不说这个词哦", "换个开心的话题吧"]
+    PARTIAL_SENSITIVE_CHARS = ["死", "杀", "打", "骂"]
+
+
+#单元格4：安全过滤函数
+
+def contains_sensitive_words(text):
+    """
+    检查文本是否包含敏感词
+    返回: (是否包含, 触发的敏感词)
+    """
+    text_lower = text.lower()
+    for word in ALL_SENSITIVE_WORDS:
+        if word in text_lower:
+            return True, word
+    return False, None
+
+def contains_partial_sensitive(text):
+    """
+    检查是否包含部分敏感字
+    """
+    for char in PARTIAL_SENSITIVE_CHARS:
+        if char in text:
+            return True, char
+    return False, None
+
+def filter_user_input(user_input):
+    """
+    过滤用户输入
+    返回: (是否安全, 触发的敏感词, 警告信息)
+    """
+    # 检查完整敏感词
+    has_sensitive, word = contains_sensitive_words(user_input)
+    if has_sensitive:
+        return False, word, f"触发敏感词: {word}"
+    
+    # 检查部分敏感字
+    has_partial, char = contains_partial_sensitive(user_input)
+    if has_partial:
+        return True, char, f"提示: 建议不使用'{char}'字"
+    
+    return True, None, None
+
+def get_friendly_reply():
+    """
+    获取随机友好回复
+    """
+    return random.choice(FRIENDLY_REPLIES)
+
+# 测试安全过滤
+print("测试安全过滤函数")
+print("-" * 40)
+
+test_words = ["你好", "你是个笨蛋", "今天天气真好", "我想打死他"]
+for word in test_words:
+    is_safe, trigger, warning = filter_user_input(word)
+    if is_safe:
+        if warning:
+            print(f"  {warning}: '{word}'")
+        else:
+            print(f"  √ 安全: '{word}'")
+    else:
+        print(f"  × 不安全 {trigger}: '{word}'")
+
+#单元格5：核心对话函数
+
+def chat_complete(user_input, history=None, max_history=5):
+    """
+    核心对话函数（带安全过滤）
+    
+    参数:
+        user_input: 用户输入
+        history: 历史记录
+        max_history: 最大记忆轮数
+    
+    返回:
+        dict: 包含回复、历史、状态等信息
+    """
+    if history is None:
+        history = []
+    
+    # 1. 安全过滤用户输入
+    is_safe, trigger_word, warning = filter_user_input(user_input)
+
+    if not is_safe:
+        # 发现敏感词，直接返回友好回复
+        return {
+            "success": True,
+            "reply": get_friendly_reply(),
+            "history": history,
+            "warning": warning,
+            "trigger_word": trigger_word,
+            "filtered_user": True,  # ← 修改这里
+            "rounds": len(history) // 2
+        }
+
+    # 2. 构建消息列表
+    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    
+    # 添加历史记录
+    for msg in history[-(max_history*2):]:
+        messages.append(msg)
+    
+    # 添加当前输入
+    messages.append({"role": "user", "content": user_input})
+    
+    # 3. 调用API
+    try:
+        start_time = time.time()
+        
+        response = client.chat.completions.create(
+            model=MODEL_NAME,
+            messages=messages,
+            temperature=TEMPERATURE,
+            stream=False
+        )
+        
+        elapsed = time.time() - start_time
+        reply = response.choices[0].message.content
+        
+        # 4. 安全过滤机器人回复
+        has_sensitive, bot_trigger = contains_sensitive_words(reply)
+        if has_sensitive:
+            final_reply = get_friendly_reply()
+            filtered_bot = True
+            bot_warning = f"机器人回复被过滤"
+            # 机器人回复被过滤时不更新历史
+            history_to_return = history
+        else:
+            final_reply = reply
+            filtered_bot = False
+            bot_warning = None
+            # 更新历史
+            history.append({"role": "user", "content": user_input})
+            history.append({"role": "assistant", "content": final_reply})
+            history_to_return = history
+        
+        # 5. 返回结果
+        result = {
+            "success": True,
+            "reply": final_reply,
+            "history": history_to_return,
+            "response_time": f"{elapsed:.2f}秒",
+            "rounds": len(history_to_return) // 2,
+            "filtered_user": False,  # 用户输入安全
+            "filtered_bot": filtered_bot
+        }
+        
+        if warning:
+            result["user_warning"] = warning
+        if bot_warning:
+            result["bot_warning"] = bot_warning
+            
+        return result
+        
+    except Exception as e:
+        return {
+            "success": False,
+            "reply": f"× {BOT_NAME}没听清，能再说一遍吗？",
+            "history": history,
+            "error": str(e),
+            "rounds": len(history) // 2
+        }
+
+
+print("√ 核心对话函数修复完成")
+
+
+#单元格6：辅助函数
+
+def print_chat(user_input, reply, bot_name=BOT_NAME):
+    """打印对话"""
+    print(f"用户: {user_input}")
+    print(f"{bot_name}: {reply}")
+    print()
+
+def get_history_stats(history):
+    """获取历史统计信息"""
+    total_rounds = len(history) // 2
+    total_chars = sum(len(msg["content"]) for msg in history)
+    
+    return {
+        "总对话轮数": total_rounds,
+        "总消息数": len(history),
+        "总字符数": total_chars,
+        "平均每轮字符数": total_chars // total_rounds if total_rounds > 0 else 0
+    }
+
+def print_history(history, bot_name=BOT_NAME, max_show=5):
+    """打印历史记录"""
+    if len(history) == 0:
+        print("暂无历史记录")
+        return
+    
+    print("\n" + "-" * 40)
+    print(f"最近{min(len(history)//2, max_show)}轮对话:")
+    print("-" * 40)
+    
+    start = max(0, len(history) - max_show*2)
+    for i in range(start, len(history), 2):
+        if i+1 < len(history):
+            round_num = i//2 + 1
+            user_msg = history[i]["content"][:30] + "..." if len(history[i]["content"]) > 30 else history[i]["content"]
+            bot_msg = history[i+1]["content"][:30] + "..." if len(history[i+1]["content"]) > 30 else history[i+1]["content"]
+            print(f"第{round_num}轮:")
+            print(f"  用户: {user_msg}")
+            print(f"  {bot_name}: {bot_msg}")
+            print()
+
+def save_history_to_file(history, filename=None, bot_name=BOT_NAME):
+    """保存历史到文件"""
+    if filename is None:
+        filename = f"对话记录_{time.strftime('%Y%m%d_%H%M%S')}.txt"
+    
+    try:
+        with open(filename, 'w', encoding='utf-8') as f:
+            f.write(f"{bot_name} 对话记录\n")
+            f.write("=" * 40 + "\n\n")
+            
+            for i in range(0, len(history), 2):
+                if i+1 < len(history):
+                    f.write(f"第{i//2+1}轮:\n")
+                    f.write(f"用户: {history[i]['content']}\n")
+                    f.write(f"{bot_name}: {history[i+1]['content']}\n")
+                    f.write("-" * 30 + "\n\n")
+            
+            f.write(f"共{len(history)//2}轮对话")
+        print(f"√ 已保存到: {filename}")
+        return True
+    except Exception as e:
+        print(f"× 保存失败: {e}")
+        return False
+
+print("√ 辅助函数定义成功")
+
+
+
+#单元格6.5：对话摘要功能（新版）
+
+import datetime
+
+def generate_conversation_summary(history, child_name="小朋友"):
+    """
+    生成格式化的对话摘要
+    
+    参数:
+        history: 对话历史记录
+        child_name: 儿童昵称，默认为"小朋友"
+    
+    返回:
+        str: 格式化的摘要文本
+    """
+    if len(history) < 2:
+        return "暂无对话记录"
+    
+    total_rounds = len(history) // 2
+    current_time = datetime.datetime.now()
+    
+    # 估算对话开始时间（假设每轮30秒）
+    start_time = current_time - datetime.timedelta(seconds=total_rounds * 30)
+    start_str = start_time.strftime("%Y-%m-%d %H:%M")
+    end_str = current_time.strftime("%H:%M")
+    
+    # 对话时长（分钟）
+    duration = total_rounds * 0.5  # 每轮0.5分钟估算
+    
+    # 分析话题
+    topics = []
+    user_texts = []
+    bot_texts = []
+    
+    for i in range(0, len(history), 2):
+        if i < len(history):
+            user_texts.append(history[i]["content"])
+        if i+1 < len(history):
+            bot_texts.append(history[i+1]["content"])
+    
+    all_text = " ".join(user_texts)
+    
+    # 识别话题
+    topic_keywords = {
+        "心情分享": ["开心", "难过", "生气", "高兴", "伤心", "快乐", "今天", "心情"],
+        "知识问答": ["为什么", "怎么", "是什么", "怎么办", "?", "？", "问题"],
+        "故事聆听": ["故事", "讲", "听", "童话", "从前"],
+        "习惯提醒": ["吃饭", "睡觉", "作业", "学习", "刷牙", "洗澡", "起床"],
+        "游戏互动": ["游戏", "玩", "猜", "谜语", "笑话"],
+        "日常聊天": ["你好", "再见", "谢谢", "名字", "几岁"]
+    }
+    
+    for topic, keywords in topic_keywords.items():
+        for keyword in keywords:
+            if keyword in all_text:
+                topics.append(topic)
+                break
+    
+    if not topics:
+        topics = ["日常聊天"]
+    
+    # 情绪分析
+    happy_words = ["开心", "高兴", "快乐", "棒", "好", "喜欢", "爱"]
+    sad_words = ["难过", "伤心", "烦", "讨厌", "生气", "不开心"]
+    
+    happy_count = sum(1 for text in user_texts for w in happy_words if w in text)
+    sad_count = sum(1 for text in user_texts for w in sad_words if w in text)
+    
+    if happy_count > sad_count:
+        mood = "开心 / 积极"
+    elif sad_count > happy_count:
+        mood = "需要安慰"
+    else:
+        mood = "平稳平和"
+    
+    # 关键内容（取最后3轮对话）
+    key_contents = []
+    for i in range(max(0, len(history)-6), len(history), 2):
+        if i+1 < len(history):
+            user_short = history[i]["content"][:20] + "..." if len(history[i]["content"]) > 20 else history[i]["content"]
+            bot_short = history[i+1]["content"][:20] + "..." if len(history[i+1]["content"]) > 20 else history[i+1]["content"]
+            key_contents.append(f"你：{user_short}")
+            key_contents.append(f"小智：{bot_short}")
+    
+    # 安全检测
+    has_sensitive = False
+    for text in user_texts + bot_texts:
+        if 'contains_sensitive_words' in globals():
+            safe, _ = contains_sensitive_words(text)
+            if not safe:
+                has_sensitive = True
+                break
+    
+    safety_note = "无不良内容，对话文明健康" if not has_sensitive else "已过滤不良内容"
+    
+    # 生成摘要
+    summary = f"""儿童 AI 聊天机器人 — 对话摘要
+儿童昵称：{child_name}
+对话时间：{start_str}–{end_str}
+对话时长：{duration:.0f} 分钟
+主要话题：{'、'.join(list(dict.fromkeys(topics))[:3])}
+情绪状态：{mood}
+关键内容：
+{chr(10).join(key_contents[-4:])}
+安全提示：{safety_note}"""
+    
+    return summary
+
+print("√ 新版对话摘要功能加载成功")
+
+
+
+
+#单元格6.6：对话导出功能
+def export_conversation_text(history, filename=None):
+    """
+    导出对话为文本文件（便于阅读）
+    """
+    if len(history) == 0:
+        print("× 无对话可导出")
+        return False
+    
+    if filename is None:
+        filename = f"对话记录_{time.strftime('%Y%m%d_%H%M%S')}.txt"
+    
+    try:
+        with open(filename, 'w', encoding='utf-8') as f:
+            f.write("=" * 50 + "\n")
+            f.write(f"{BOT_NAME} 对话记录\n")
+            f.write(f"导出时间: {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
+            f.write("=" * 50 + "\n\n")
+            
+            for i in range(0, len(history), 2):
+                if i < len(history):
+                    f.write(f"第{i//2+1}轮\n")
+                    f.write(f"你: {history[i]['content']}\n")
+                if i+1 < len(history):
+                    f.write(f"{BOT_NAME}: {history[i+1]['content']}\n")
+                f.write("-" * 30 + "\n\n")
+            
+            f.write(f"共 {len(history)//2} 轮对话\n")
+        
+        print(f"√ 对话已导出到: {filename}")
+        return True
+    except Exception as e:
+        print(f"× 导出失败: {e}")
+        return False
+
+def export_conversation_json(history, filename=None):
+    """
+    导出对话为JSON格式（便于程序处理）
+    """
+    if len(history) == 0:
+        print("× 无对话可导出")
+        return False
+    
+    if filename is None:
+        filename = f"对话数据_{time.strftime('%Y%m%d_%H%M%S')}.json"
+    
+    try:
+        data = {
+            "bot_name": BOT_NAME,
+            "export_time": time.strftime('%Y-%m-%d %H:%M:%S'),
+            "total_rounds": len(history) // 2,
+            "conversations": []
+        }
+        
+        for i in range(0, len(history), 2):
+            if i+1 < len(history):
+                data["conversations"].append({
+                    "round": i//2 + 1,
+                    "user": history[i]["content"],
+                    "bot": history[i+1]["content"]
+                })
+        
+        with open(filename, 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        
+        print(f"√ 数据已导出到: {filename}")
+        return True
+    except Exception as e:
+        print(f"× 导出失败: {e}")
+        return False
+
+print("√ 对话导出功能加载成功")
+
+
+
+#单元格6.7：对话统计报表
+
+def generate_conversation_report(history):
+    """
+    生成详细的对话统计报表
+    """
+    if len(history) < 2:
+        print("对话不足，无法生成报表")
+        return None
+    
+    total_rounds = len(history) // 2
+    
+    # 统计各类数据
+    user_total_chars = 0
+    bot_total_chars = 0
+    user_avg_len = 0
+    bot_avg_len = 0
+    question_count = 0
+    answer_count = 0
+    
+    for i in range(0, len(history), 2):
+        if i < len(history):
+            user_msg = history[i]["content"]
+            user_total_chars += len(user_msg)
+            if "?" in user_msg or "？" in user_msg:
+                question_count += 1
+        
+        if i+1 < len(history):
+            bot_msg = history[i+1]["content"]
+            bot_total_chars += len(bot_msg)
+            if "?" in bot_msg or "？" in bot_msg:
+                answer_count += 1
+    
+    user_avg_len = user_total_chars // total_rounds
+    bot_avg_len = bot_total_chars // total_rounds
+    
+    # 打印报表
+    print("\n" + "=" * 60)
+    print("对话统计报表")
+    print("=" * 60)
+    
+    print("\n【基础统计】")
+    print(f"  对话轮数: {total_rounds} 轮")
+    print(f"  总消息数: {len(history)} 条")
+    print(f"  对话时长: {total_rounds * 0.5:.1f} 分钟（估算）")
+    
+    print("\n【字符统计】")
+    print(f"  用户总字符: {user_total_chars} 字")
+    print(f"  {BOT_NAME}总字符: {bot_total_chars} 字")
+    print(f"  用户平均每轮: {user_avg_len} 字")
+    print(f"  {BOT_NAME}平均每轮: {bot_avg_len} 字")
+    
+    print("\n【对话类型】")
+    print(f"  用户提问次数: {question_count}")
+    print(f"  机器人反问次数: {answer_count}")
+    
+    if question_count > 0:
+        print(f"  问答比例: 1:{answer_count/question_count:.1f}")
+    
+    # 安全统计
+    filtered_count = 0
+    for i in range(1, len(history), 2):  # 只检查机器人回复
+        has_sensitive, _ = contains_sensitive_words(history[i]["content"])
+        if has_sensitive:
+            filtered_count += 1
+    
+    print("\n【安全统计】")
+    print(f"  触发过滤次数: {filtered_count}")
+    print(f"  安全率: {(1-filtered_count/max(total_rounds,1))*100:.1f}%")
+    
+    print("\n" + "=" * 60)
+    
+    return {
+        "rounds": total_rounds,
+        "user_chars": user_total_chars,
+        "bot_chars": bot_total_chars,
+        "questions": question_count,
+        "filtered": filtered_count
+    }
+
+print("√ 统计报表功能加载成功")
+
+
+
+#单元格7：测试所有功能并检测错误
+
+print("开始全面功能测试")
+print("-" * 40)
+
+test_results = {
+    "passed": 0,
+    "failed": 0,
+    "errors": []
+}
+
+def run_test(test_name, test_func):
+    """运行单个测试"""
+    try:
+        print(f"\n测试: {test_name}")
+        print("-" * 40)
+        test_func()
+        print(f"√ 通过: {test_name}")
+        test_results["passed"] += 1
+    except Exception as e:
+        print(f"× 失败: {test_name}")
+        print(f"  错误: {type(e).__name__}: {e}")
+        test_results["failed"] += 1
+        test_results["errors"].append(f"{test_name}: {e}")
+
+# 测试1：安全过滤功能
+def test_safety():
+    test_cases = [
+        ("你好", True),
+        ("你是个笨蛋", False),
+        ("今天天气真好", True),
+        ("我想打死他", False),
+        ("我们去玩吧", True)
+    ]
+    
+    for text, expected_safe in test_cases:
+        is_safe, trigger, warning = filter_user_input(text)
+        result = is_safe == expected_safe
+        status = "√" if result else "×"
+        print(f"  {status} '{text}' -> 期望安全:{expected_safe}, 实际:{is_safe}")
+        if not result:
+            raise AssertionError(f"安全过滤测试失败: {text}")
+
+# 测试2：API连接测试
+def test_api_connection():
+    try:
+        response = client.chat.completions.create(
+            model=MODEL_NAME,
+            messages=[{"role": "user", "content": "你好"}],
+            max_tokens=10,
+            stream=False
+        )
+        print(f"  √ API连接成功")
+    except Exception as e:
+        raise AssertionError(f"API连接失败: {e}")
+
+# 测试3：核心对话函数
+def test_chat_function():
+    result = chat_complete("你好", [])
+    if not result["success"]:
+        raise AssertionError(f"对话失败: {result.get('error')}")
+    print(f"  √ 回复: {result['reply'][:30]}...")
+    print(f"  √ 响应时间: {result['response_time']}")
+
+# 测试4：多轮对话记忆
+def test_memory():
+    history = []
+    inputs = ["你好", "我叫小明", "我今年8岁"]
+    
+    for i, text in enumerate(inputs):
+        result = chat_complete(text, history)
+        history = result["history"]
+        print(f"  第{i+1}轮: {text} -> 记忆轮数: {result['rounds']}")
+    
+    if len(history) != 6:  # 3轮对话 = 6条消息
+        raise AssertionError(f"记忆错误: 期望6条消息, 实际{len(history)}条")
+
+# 测试5：敏感词过滤
+def test_sensitive_filter():
+    test_inputs = ["你是个笨蛋", "我想打死你"]
+    
+    for text in test_inputs:
+        result = chat_complete(text, [])
+        if not result.get("filtered_user"):
+            raise AssertionError(f"应该过滤但没过滤: {text}")
+        print(f"  √ 成功过滤: {text} -> {result['reply']}")
+
+# 测试6：历史记录功能
+def test_history_functions():
+    history = []
+    for i in range(3):
+        result = chat_complete(f"测试{i}", history)
+        history = result["history"]
+    
+    # 测试统计
+    stats = get_history_stats(history)
+    print(f"  √ 统计: 轮数={stats['总对话轮数']}")
+    
+    # 测试保存
+    if save_history_to_file(history, "test_history.txt"):
+        print(f"  √ 保存成功")
+        os.remove("test_history.txt")
+    else:
+        raise AssertionError("保存失败")
+
+# 运行所有测试
+run_test("1. 安全过滤功能", test_safety)
+run_test("2. API连接测试", test_api_connection)
+run_test("3. 核心对话函数", test_chat_function)
+run_test("4. 多轮对话记忆", test_memory)
+run_test("5. 敏感词过滤", test_sensitive_filter)
+run_test("6. 历史记录功能", test_history_functions)
+
+# 测试结果汇总
+print("-" * 40)
+print("测试结果汇总")
+
+print(f"通过: {test_results['passed']} 项")
+print(f"失败: {test_results['failed']} 项")
+
+if test_results['failed'] > 0:
+    print("\n错误详情:")
+    for error in test_results['errors']:
+        print(f"  × {error}")
+    print("\n⚠ 请修复上述错误后再进行下一步")
+else:
+    print("\n√所有测试通过 ")
+
+
+#单元格7：测试所有功能并检测错误
+
+print("开始全面功能测试")
+print("-" * 40)
+
+test_results = {
+    "passed": 0,
+    "failed": 0,
+    "errors": []
+}
+
+def run_test(test_name, test_func):
+    """运行单个测试"""
+    try:
+        print(f"\n测试: {test_name}")
+        print("-" * 40)
+        test_func()
+        print(f"√ 通过: {test_name}")
+        test_results["passed"] += 1
+    except Exception as e:
+        print(f"× 失败: {test_name}")
+        print(f"  错误: {type(e).__name__}: {e}")
+        test_results["failed"] += 1
+        test_results["errors"].append(f"{test_name}: {e}")
+
+# 测试1：安全过滤功能
+def test_safety():
+    test_cases = [
+        ("你好", True),
+        ("你是个笨蛋", False),
+        ("今天天气真好", True),
+        ("我想打死他", False),
+        ("我们去玩吧", True)
+    ]
+    
+    for text, expected_safe in test_cases:
+        is_safe, trigger, warning = filter_user_input(text)
+        result = is_safe == expected_safe
+        status = "√" if result else "×"
+        print(f"  {status} '{text}' -> 期望安全:{expected_safe}, 实际:{is_safe}")
+        if not result:
+            raise AssertionError(f"安全过滤测试失败: {text}")
+
+# 测试2：API连接测试
+def test_api_connection():
+    try:
+        response = client.chat.completions.create(
+            model=MODEL_NAME,
+            messages=[{"role": "user", "content": "你好"}],
+            max_tokens=10,
+            stream=False
+        )
+        print(f"  √ API连接成功")
+    except Exception as e:
+        raise AssertionError(f"API连接失败: {e}")
+
+# 测试3：核心对话函数
+def test_chat_function():
+    result = chat_complete("你好", [])
+    if not result["success"]:
+        raise AssertionError(f"对话失败: {result.get('error')}")
+    print(f"  √ 回复: {result['reply'][:30]}...")
+    print(f"  √ 响应时间: {result['response_time']}")
+
+# 测试4：多轮对话记忆
+def test_memory():
+    history = []
+    inputs = ["你好", "我叫小明", "我今年8岁"]
+    
+    for i, text in enumerate(inputs):
+        result = chat_complete(text, history)
+        history = result["history"]
+        print(f"  第{i+1}轮: {text} -> 记忆轮数: {result['rounds']}")
+    
+    if len(history) != 6:  # 3轮对话 = 6条消息
+        raise AssertionError(f"记忆错误: 期望6条消息, 实际{len(history)}条")
+
+# 测试5：敏感词过滤
+def test_sensitive_filter():
+    test_inputs = ["你是个笨蛋", "我想打死你"]
+    
+    for text in test_inputs:
+        result = chat_complete(text, [])
+        if not result.get("filtered_user"):
+            raise AssertionError(f"应该过滤但没过滤: {text}")
+        print(f"  √ 成功过滤: {text} -> {result['reply']}")
+
+# 测试6：历史记录功能
+def test_history_functions():
+    history = []
+    for i in range(3):
+        result = chat_complete(f"测试{i}", history)
+        history = result["history"]
+    
+    # 测试统计
+    stats = get_history_stats(history)
+    print(f"  √ 统计: 轮数={stats['总对话轮数']}")
+    
+    # 测试保存
+    if save_history_to_file(history, "test_history.txt"):
+        print(f"  √ 保存成功")
+        os.remove("test_history.txt")
+    else:
+        raise AssertionError("保存失败")
+
+# 运行所有测试
+run_test("1. 安全过滤功能", test_safety)
+run_test("2. API连接测试", test_api_connection)
+run_test("3. 核心对话函数", test_chat_function)
+run_test("4. 多轮对话记忆", test_memory)
+run_test("5. 敏感词过滤", test_sensitive_filter)
+run_test("6. 历史记录功能", test_history_functions)
+
+# 测试结果汇总
+print("-" * 40)
+print("测试结果汇总")
+
+print(f"通过: {test_results['passed']} 项")
+print(f"失败: {test_results['failed']} 项")
+
+if test_results['failed'] > 0:
+    print("\n错误详情:")
+    for error in test_results['errors']:
+        print(f"  × {error}")
+    print("\n⚠ 请修复上述错误后再进行下一步")
+else:
+    print("\n√所有测试通过 ")
+
+
+
+
+#单元格8：对话循环功能
+
+def chat_loop():
+    """
+    对话循环主函数（带所有命令）
+    """
+    print("\n" + "=" * 60)
+    print(f"          {BOT_NAME} - 儿童AI聊天机器人")
+    print("=" * 60)
+    print(f"你好！我是{BOT_NAME}，你的专属聊天伙伴！")
+    print("\n使用说明：")
+    print("  • 直接输入文字开始聊天")
+    print("  • 输入 /help 查看所有命令")
+    print("  • 输入 /exit 退出")
+    print("-" * 60)
+    
+    history = []
+    
+    while True:
+        try:
+            # 获取用户输入
+            user_input = input("\n你: ").strip()
+            
+            # 处理命令
+            if user_input.startswith("/"):
+                cmd = user_input[1:].lower()
+                
+                # 退出命令
+                if cmd in ["exit", "quit", "bye"]:
+                    print(f"\n{BOT_NAME}: 再见啦！下次再聊！")
+                    break
+                
+                # 帮助命令
+                elif cmd == "help":
+                    print("\n📋 可用命令列表：")
+                    print("  /help     - 显示本帮助")
+                    print("  /clear    - 清空历史记录")
+                    print("  /stats    - 显示基本统计")
+                    print("  /history  - 查看最近对话")
+                    print("  /save     - 保存对话到文件")
+                    print("  /summary  - 生成对话摘要")
+                    print("  /export   - 导出对话(文本/JSON)")
+                    print("  /report   - 详细统计报表")
+                    print("  /search   - 搜索关键词")
+                    print("  /wordcount- 词频统计")
+                    print("  /exit     - 退出程序")
+                    continue
+                
+                # 清空历史
+                elif cmd == "clear":
+                    history = []
+                    print("√ 历史已清空")
+                    continue
+                
+                # 基本统计
+                elif cmd == "stats":
+                    stats = get_history_stats(history)
+                    print("\n统计信息：")
+                    for k, v in stats.items():
+                        print(f"  {k}: {v}")
+                    continue
+                
+                # 查看历史
+                elif cmd == "history":
+                    print_history(history)
+                    continue
+                
+                # 保存对话
+                elif cmd == "save":
+                    filename = f"对话记录_{time.strftime('%Y%m%d_%H%M%S')}.txt"
+                    save_history_to_file(history, filename)
+                    continue
+                
+                # 对话摘要
+                elif cmd == "summary":
+                    generate_conversation_summary(history)
+                    continue
+                
+                # 导出对话
+                elif cmd == "export":
+                    print("\n导出选项:")
+                    print("  1. 导出为文本文件")
+                    print("  2. 导出为JSON文件")
+                    choice = input("请选择 (1/2): ").strip()
+                    
+                    if choice == "1":
+                        filename = f"对话记录_{time.strftime('%Y%m%d_%H%M%S')}.txt"
+                        export_conversation_text(history, filename)
+                    elif choice == "2":
+                        filename = f"对话数据_{time.strftime('%Y%m%d_%H%M%S')}.json"
+                        export_conversation_json(history, filename)
+                    else:
+                        print("× 无效选择")
+                    continue
+                
+                # 统计报表
+                elif cmd == "report":
+                    generate_conversation_report(history)
+                    continue
+                
+                # 搜索关键词
+                elif cmd == "search":
+                    keyword = input("请输入搜索关键词: ").strip()
+                    if keyword:
+                        search_conversation(history, keyword)
+                    else:
+                        print("× 关键词不能为空")
+                    continue
+                
+                # 词频统计
+                elif cmd == "wordcount":
+                    try:
+                        top_n = input("请输入要显示的词数 (默认10): ").strip()
+                        top_n = int(top_n) if top_n else 10
+                        count_word_frequency(history, top_n)
+                    except ValueError:
+                        print("× 请输入数字")
+                    continue
+                
+                # 未知命令
+                else:
+                    print(f"× 未知命令: {cmd}")
+                    print("   输入 /help 查看可用命令")
+                    continue
+            
+            # 退出（兼容中文）
+            if user_input in ["退出", "再见", "拜拜"]:
+                print(f"\n{BOT_NAME}: 再见啦！下次再聊！")
+                break
+            
+            # 跳过空输入
+            if user_input == "":
+                continue
+            
+            # 调用对话函数
+            result = chat_complete(user_input, history)
+            
+            # 显示用户警告
+            if "user_warning" in result:
+                print(f"  {result['user_warning']}")
+            
+            # 显示机器人警告
+            if "bot_warning" in result:
+                print(f"  {result['bot_warning']}")
+            
+            # 显示回复
+            print(f"{BOT_NAME}: {result['reply']}")
+            
+            # 显示响应时间和轮数
+            if "response_time" in result:
+                print(f"  [响应: {result['response_time']} | 轮数: {result['rounds']}]")
+            
+            # 更新历史
+            history = result["history"]
+            print("-" * 40)
+            
+        except KeyboardInterrupt:
+            print(f"\n\n{BOT_NAME}: 再见啦！")
+            break
+        except Exception as e:
+            print(f"× 错误: {type(e).__name__}: {e}")
+            print("   继续聊天吧")
+            continue
+
+
+
+#单元格9：网页服务器配置
+
+from flask import Flask, render_template, request, jsonify, session
+from flask_cors import CORS
+import uuid
+
+# 创建Flask应用
+app = Flask(__name__)
+CORS(app)  # 允许跨域请求
+app.secret_key = "child_ai_chatbot_secret_key_2024"
+
+# 存储不同用户的对话历史
+chat_sessions = {}
+
+print("网页服务器配置")
+print("-" * 40)
+print(f"√ Flask应用创建成功")
+print(f"√ CORS已启用")
+
+
+
+
+# ============================================
+# 单元格9：Whisper语音识别模块（GPU加速版）
+# ============================================
+
+import os
+import time
+import threading
+import numpy as np
+import pyaudio
+import wave
+import uuid
+import traceback
+
+# Whisper配置
+WHISPER_MODEL = "base"  # tiny, base, small, medium, large (tiny最快)
+SAMPLE_RATE = 16000
+CHANNELS = 1
+RECORD_CHUNK = 1024
+LANGUAGE = "zh"
+
+# 尝试导入whisper
+WHISPER_AVAILABLE = False
+try:
+    import whisper
+    WHISPER_AVAILABLE = True
+    print("√ Whisper模块导入成功")
+except ImportError as e:
+    print(f"× Whisper模块导入失败: {e}")
+    print("  请运行: pip install openai-whisper")
+
+# 尝试导入scipy（用于重采样）
+SCIPY_AVAILABLE = False
+try:
+    import scipy.signal
+    SCIPY_AVAILABLE = True
+    print("√ scipy模块导入成功")
+except ImportError as e:
+    print(f"× scipy模块导入失败: {e}")
+    print("  请运行: pip install scipy")
+
+def load_audio_python(audio_path, target_sr=16000):
+    """
+    纯Python加载音频文件（不依赖ffmpeg）
+    
+    参数:
+        audio_path: WAV文件路径
+        target_sr: 目标采样率
+    
+    返回:
+        numpy数组，float32类型，范围[-1, 1]
+    """
+    try:
+        with wave.open(audio_path, 'rb') as wf:
+            nchannels = wf.getnchannels()
+            sampwidth = wf.getsampwidth()
+            framerate = wf.getframerate()
+            nframes = wf.getnframes()
+            
+            print(f"  原始音频: {nchannels}声道, {sampwidth*8}bit, {framerate}Hz, {nframes}帧")
+            
+            audio_data = wf.readframes(nframes)
+            
+            if sampwidth == 2:
+                audio = np.frombuffer(audio_data, dtype=np.int16)
+            elif sampwidth == 1:
+                audio = np.frombuffer(audio_data, dtype=np.uint8)
+                audio = audio.astype(np.int16) - 128
+            else:
+                raise ValueError(f"不支持的采样位宽: {sampwidth}")
+            
+            if nchannels > 1:
+                audio = audio[::nchannels]
+            
+            audio = audio.astype(np.float32) / 32768.0
+            
+            if framerate != target_sr:
+                if SCIPY_AVAILABLE:
+                    print(f"  重采样: {framerate}Hz -> {target_sr}Hz")
+                    num_samples = int(len(audio) * target_sr / framerate)
+                    audio = scipy.signal.resample(audio, num_samples)
+                else:
+                    print(f"  ⚠ scipy未安装，跳过重采样")
+            
+            return audio
+            
+    except Exception as e:
+        print(f"加载音频失败: {e}")
+        return None
+
+class WhisperRecognizer:
+    """Whisper语音识别类（GPU加速版）"""
+    
+    def __init__(self, model_name=WHISPER_MODEL):
+        self.model_name = model_name
+        self.model = None
+        self.audio = None
+        self.is_recording = False
+        self.frames = []
+        self.stream = None
+        self.recording_thread = None
+        self.should_stop = False
+        self._init_audio()
+        self._load_model()
+        
+    def _init_audio(self):
+        """初始化音频设备"""
+        try:
+            self.audio = pyaudio.PyAudio()
+            print("√ 音频设备初始化成功")
+        except Exception as e:
+            print(f"× 音频设备初始化失败: {e}")
+            self.audio = None
+    
+    def _find_working_device(self):
+        """查找可用的输入设备"""
+        if self.audio is None:
+            return None
+        
+        for i in range(self.audio.get_device_count()):
+            info = self.audio.get_device_info_by_index(i)
+            if info['maxInputChannels'] > 0:
+                try:
+                    test_stream = self.audio.open(
+                        format=pyaudio.paInt16,
+                        channels=1,
+                        rate=SAMPLE_RATE,
+                        input=True,
+                        input_device_index=i,
+                        frames_per_buffer=RECORD_CHUNK,
+                        start=False
+                    )
+                    test_stream.close()
+                    print(f"√ 找到可用设备 {i}: {info['name']}")
+                    return i
+                except:
+                    continue
+        return None
+        
+    def _load_model(self):
+        """加载Whisper模型（支持GPU）"""
+        if not WHISPER_AVAILABLE:
+            print("× Whisper不可用")
+            return
+        try:
+            import torch
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+            print(f"使用设备: {device}")
+            
+            if device == "cuda":
+                print(f"GPU型号: {torch.cuda.get_device_name(0)}")
+                print(f"显存: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.1f} GB")
+            
+            print(f"正在加载Whisper模型: {self.model_name}...")
+            self.model = whisper.load_model(self.model_name, device=device)
+            print(f"√ Whisper模型加载成功 (设备: {device})")
+        except Exception as e:
+            print(f"× 模型加载失败: {e}")
+            self.model = None
+    
+    def start_recording(self):
+        """开始录音"""
+        if self.is_recording:
+            return False
+        
+        if self.audio is None:
+            self._init_audio()
+            if self.audio is None:
+                return False
+        
+        device_index = self._find_working_device()
+        if device_index is None:
+            print("× 未找到可用的麦克风设备")
+            return False
+        
+        self.frames = []
+        self.should_stop = False
+        
+        try:
+            self.stream = self.audio.open(
+                format=pyaudio.paInt16,
+                channels=CHANNELS,
+                rate=SAMPLE_RATE,
+                input=True,
+                input_device_index=device_index,
+                frames_per_buffer=RECORD_CHUNK
+            )
+            self.is_recording = True
+            print(f"√ 录音开始 (设备: {device_index})")
+            return True
+        except Exception as e:
+            print(f"录音启动失败: {e}")
+            return False
+    
+    def stop_recording(self):
+        """停止录音并保存文件"""
+        if not self.is_recording:
+            return None
+        
+        self.is_recording = False
+        self.should_stop = True
+        
+        if self.recording_thread and self.recording_thread.is_alive():
+            self.recording_thread.join(timeout=2)
+        
+        if self.stream:
+            try:
+                self.stream.stop_stream()
+                self.stream.close()
+            except:
+                pass
+            self.stream = None
+        
+        if not self.frames:
+            print("× 没有录音数据")
+            return None
+        
+        print(f"√ 共收集 {len(self.frames)} 个音频帧")
+        
+        temp_filename = os.path.join(os.getcwd(), f"temp_audio_{uuid.uuid4().hex[:8]}.wav")
+        
+        try:
+            with wave.open(temp_filename, 'wb') as wf:
+                wf.setnchannels(CHANNELS)
+                wf.setsampwidth(self.audio.get_sample_size(pyaudio.paInt16))
+                wf.setframerate(SAMPLE_RATE)
+                wf.writeframes(b''.join(self.frames))
+            
+            if os.path.exists(temp_filename):
+                file_size = os.path.getsize(temp_filename)
+                if file_size > 0:
+                    print(f"√ 音频文件已保存: {os.path.basename(temp_filename)} (大小: {file_size} bytes)")
+                    return temp_filename
+                else:
+                    print(f"× 文件大小为0")
+                    os.remove(temp_filename)
+                    return None
+            else:
+                print(f"× 文件创建失败")
+                return None
+                
+        except Exception as e:
+            print(f"× 保存音频文件失败: {e}")
+            return None
+    
+    def add_frame(self, data):
+        """添加音频帧"""
+        if self.is_recording:
+            self.frames.append(data)
+    
+    def record_loop(self):
+        """录音循环（在独立线程中运行）"""
+        print("录音线程已启动")
+        frame_count = 0
+        while self.is_recording and not self.should_stop:
+            try:
+                if self.stream:
+                    data = self.stream.read(RECORD_CHUNK, exception_on_overflow=False)
+                    self.add_frame(data)
+                    frame_count += 1
+                    if frame_count % 50 == 0:
+                        print(f"  已采集 {frame_count} 帧", end='\r')
+                else:
+                    break
+            except Exception as e:
+                print(f"录音循环错误: {e}")
+                break
+        print(f"\n录音线程结束，共收集 {len(self.frames)} 帧")
+    
+    def start_recording_thread(self):
+        """启动录音线程"""
+        if self.start_recording():
+            self.recording_thread = threading.Thread(target=self.record_loop, daemon=True)
+            self.recording_thread.start()
+            return True
+        return False
+    
+    def recognize(self, audio_path):
+        """识别音频文件（纯Python音频处理，GPU加速）"""
+        if self.model is None:
+            self._load_model()
+            if self.model is None:
+                return ""
+        
+        abs_path = os.path.abspath(audio_path)
+        
+        if not os.path.exists(abs_path):
+            print(f"× 音频文件不存在: {abs_path}")
+            return ""
+        
+        try:
+            print(f"开始识别: {os.path.basename(abs_path)}")
+            file_size = os.path.getsize(abs_path)
+            print(f"文件大小: {file_size} bytes")
+            
+            if file_size < 1000:
+                print("× 录音太短，无法识别")
+                return ""
+            
+            audio = load_audio_python(abs_path, target_sr=SAMPLE_RATE)
+            
+            if audio is None:
+                print("× 音频加载失败")
+                return ""
+            
+            print(f"√ 音频加载成功: {len(audio)} 样本点")
+            
+            import torch
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+            
+            audio = whisper.pad_or_trim(audio)
+            mel = whisper.log_mel_spectrogram(audio).to(device)
+            
+            options = whisper.DecodingOptions(language=LANGUAGE, task="transcribe")
+            result = whisper.decode(self.model, mel, options)
+            
+            text = result.text.strip()
+            print(f"√ 识别结果: {text if text else '(空)'}")
+            return text
+            
+        except Exception as e:
+            print(f"语音识别失败: {e}")
+            traceback.print_exc()
+            return ""
+        finally:
+            if os.path.exists(abs_path):
+                try:
+                    os.remove(abs_path)
+                    print(f"√ 已删除临时文件")
+                except:
+                    pass
+    
+    def recognize_sync(self, audio_path):
+        """同步识别音频文件"""
+        return self.recognize(audio_path)
+    
+    def close(self):
+        """关闭音频设备"""
+        self.should_stop = True
+        self.is_recording = False
+        if self.stream:
+            try:
+                self.stream.stop_stream()
+                self.stream.close()
+            except:
+                pass
+        if self.audio:
+            try:
+                self.audio.terminate()
+            except:
+                pass
+
+# 全局语音识别器
+if WHISPER_AVAILABLE:
+    speech_recognizer = WhisperRecognizer()
+else:
+    speech_recognizer = None
+
+current_volume = 0
+
+print("=" * 60)
+print("Whisper语音识别模块加载完成（GPU加速版）")
+print(f"√ Whisper模型: {WHISPER_MODEL}")
+print(f"√ scipy: {'可用' if SCIPY_AVAILABLE else '不可用（重采样功能受限）'}")
+print(f"√ 语音识别状态: {'可用' if WHISPER_AVAILABLE else '不可用'}")
+print("=" * 60)
+
+
+
+
+# ============================================
+# 单元格9.5：语音输入功能测试
+# ============================================
+
+import time
+import os
+import numpy as np
+
+print("=" * 60)
+print("语音输入功能测试")
+print("=" * 60)
+
+# 1. 检查Whisper
+print("\n1. 检查Whisper模块...")
+if WHISPER_AVAILABLE:
+    print("   √ Whisper模块已安装")
+else:
+    print("   × Whisper模块未安装")
+    print("   → 请运行: pip install openai-whisper")
+    exit()
+
+# 2. 检查scipy
+print("\n2. 检查scipy模块...")
+if SCIPY_AVAILABLE:
+    print("   √ scipy模块已安装")
+else:
+    print("   × scipy模块未安装")
+    print("   → 请运行: pip install scipy")
+    print("   → 重采样功能将不可用")
+
+# 3. 检查语音识别器
+print("\n3. 检查语音识别器...")
+if speech_recognizer is None:
+    print("   × 语音识别器初始化失败")
+    exit()
+else:
+    print("   √ 语音识别器已初始化")
+    print(f"   √ 模型: {WHISPER_MODEL}")
+    print(f"   √ 采样率: {SAMPLE_RATE}Hz")
+
+# 4. 测试录音功能
+print("\n4. 测试录音功能...")
+
+try:
+    print("   → 启动录音线程...")
+    if speech_recognizer.start_recording_thread():
+        print("   √ 录音线程已启动")
+        
+        print("\n   → 请对着麦克风说话 (5秒)...")
+        print("      ", end="")
+        for i in range(5):
+            time.sleep(1)
+            print(".", end="", flush=True)
+        print()
+        
+        # 停止录音
+        print("\n   → 停止录音...")
+        audio_file = speech_recognizer.stop_recording()
+        
+        if audio_file:
+            print(f"\n   √ 录音成功，共 {len(speech_recognizer.frames)} 帧")
+            
+            # 测试识别
+            print("\n5. 测试语音识别...")
+            text = speech_recognizer.recognize_sync(audio_file)
+            
+            if text:
+                print(f"\n   √ 识别成功!")
+                print(f"\n   ========================================")
+                print(f"   识别结果: \"{text}\"")
+                print(f"   ========================================")
+            else:
+                print("\n   × 识别结果为空")
+                print("   → 可能原因: 没有说话、环境太吵、或录音太短")
+        else:
+            print("\n   × 录音失败，未获取到音频数据")
+            print("   → 请检查麦克风是否正常工作")
+            print("   → 请检查Windows麦克风权限")
+    else:
+        print("   × 启动录音失败")
+        print("   → 请检查麦克风是否连接")
+        
+except Exception as e:
+    print(f"   × 测试失败: {e}")
+    import traceback
+    traceback.print_exc()
+
+print("\n" + "=" * 60)
+print("测试完成")
+print("=" * 60)
+
+# 提示下一步
+print("\n👉 如果测试成功，可以继续运行单元格10启动网页服务器")
+print("   如果录音或识别失败，请检查:")
+print("   1. 麦克风是否连接并开启")
+print("   2. Windows麦克风权限: 设置 -> 隐私 -> 麦克风")
+print("   3. 环境是否有噪音干扰")
+print("   4. 尝试说话清晰一些")
+print("=" * 60)
+
+
+
+#单元格10：网页路由函数
+
+# 清除已有的路由
+if 'index' in app.view_functions:
+    del app.view_functions['index']
+if '/' in app.url_map._rules_by_endpoint:
+    del app.url_map._rules_by_endpoint['index']
+if 'chat' in app.view_functions:
+    del app.view_functions['chat']
+if '/chat' in app.url_map._rules_by_endpoint:
+    del app.url_map._rules_by_endpoint['chat']
+if 'clear' in app.view_functions:
+    del app.view_functions['clear']
+if '/clear' in app.url_map._rules_by_endpoint:
+    del app.url_map._rules_by_endpoint['clear']
+if 'load_history' in app.view_functions:
+    del app.view_functions['load_history']
+if '/load_history' in app.url_map._rules_by_endpoint:
+    del app.url_map._rules_by_endpoint['load_history']
+if 'save_chat' in app.view_functions:
+    del app.view_functions['save_chat']
+if '/save_chat' in app.url_map._rules_by_endpoint:
+    del app.url_map._rules_by_endpoint['save_chat']
+if 'init_speech' in app.view_functions:
+    del app.view_functions['init_speech']
+if '/init_speech' in app.url_map._rules_by_endpoint:
+    del app.url_map._rules_by_endpoint['init_speech']
+if 'start_recording' in app.view_functions:
+    del app.view_functions['start_recording']
+if '/start_recording' in app.url_map._rules_by_endpoint:
+    del app.url_map._rules_by_endpoint['start_recording']
+if 'stop_recording' in app.view_functions:
+    del app.view_functions['stop_recording']
+if '/stop_recording' in app.url_map._rules_by_endpoint:
+    del app.url_map._rules_by_endpoint['stop_recording']
+
+# 存储结构: {session_id: {chat_id: [对话历史]}}
+chat_sessions = {}
+
+# ============================================
+# 语音路由（使用单元格9中的语音识别器）
+# ============================================
+
+@app.route('/init_speech', methods=['GET'])
+def init_speech():
+    """初始化语音识别器"""
+    global speech_recognizer
+    try:
+        if speech_recognizer is None and WHISPER_AVAILABLE:
+            speech_recognizer = WhisperRecognizer()
+        return jsonify({'success': WHISPER_AVAILABLE and speech_recognizer is not None})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/start_recording', methods=['POST'])
+def start_recording():
+    """开始录音"""
+    global speech_recognizer
+    
+    if not WHISPER_AVAILABLE:
+        return jsonify({'success': False, 'error': 'Whisper未安装'})
+    
+    try:
+        if speech_recognizer is None:
+            speech_recognizer = WhisperRecognizer()
+        
+        if speech_recognizer.start_recording_thread():
+            return jsonify({'success': True})
+        else:
+            return jsonify({'success': False, 'error': '无法启动录音设备'})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/stop_recording', methods=['POST'])
+def stop_recording():
+    """停止录音并进行识别"""
+    global speech_recognizer
+    
+    if not WHISPER_AVAILABLE or speech_recognizer is None:
+        return jsonify({'success': False, 'error': 'Whisper不可用'})
+    
+    try:
+        audio_file = speech_recognizer.stop_recording()
+        
+        if audio_file:
+            text = speech_recognizer.recognize_sync(audio_file)
+            return jsonify({'success': True, 'text': text})
+        else:
+            return jsonify({'success': False, 'error': '没有录音数据'})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+# ============================================
+# 主路由
+# ============================================
+
+@app.route('/')
+def index():
+    """主页 - 带边栏的聊天界面（优化版 - 语音按钮与发送按钮同高）"""
+    return '''<!DOCTYPE html>
+<html>
+<head>
+    <title>小智 - 儿童AI聊天机器人</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Microsoft YaHei', sans-serif;
+            background: linear-gradient(135deg, #6B8CFF 0%, #9B6BFF 100%);
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .app-container {
+            width: 95%;
+            max-width: 1200px;
+            height: 90vh;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            display: flex;
+            overflow: hidden;
+        }
+        
+        .sidebar {
+            width: 260px;
+            background: #F8F9FA;
+            border-right: 1px solid #E0E0E0;
+            display: flex;
+            flex-direction: column;
+            transition: width 0.3s;
+            position: relative;
+        }
+        
+        .sidebar.collapsed {
+            width: 50px;
+        }
+        
+        .sidebar.collapsed .sidebar-content,
+        .sidebar.collapsed .new-chat-btn span {
+            display: none;
+        }
+        
+        .sidebar.collapsed .new-chat-btn {
+            padding: 8px;
+            justify-content: center;
+        }
+        
+        .sidebar-header {
+            padding: 20px 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #E0E0E0;
+        }
+        
+        .new-chat-btn {
+            background: #6B8CFF;
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 20px;
+            font-size: 14px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            transition: background 0.3s;
+        }
+        
+        .new-chat-btn:hover {
+            background: #5A7AE0;
+        }
+        
+        .collapse-btn {
+            background: none;
+            border: none;
+            font-size: 20px;
+            cursor: pointer;
+            color: #666;
+            width: 30px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 5px;
+            position: relative;
+        }
+        
+        .collapse-btn:hover {
+            background: #E0E0E0;
+        }
+        
+        .collapse-btn:hover:after {
+            content: attr(data-tooltip);
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #333;
+            color: white;
+            padding: 5px 10px;
+            border-radius: 5px;
+            font-size: 12px;
+            white-space: nowrap;
+            z-index: 1000;
+            margin-bottom: 5px;
+        }
+        
+        .sidebar-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 15px;
+        }
+        
+        .history-title {
+            font-size: 14px;
+            color: #666;
+            margin-bottom: 10px;
+            padding-left: 5px;
+        }
+        
+        .history-item {
+            padding: 10px;
+            margin-bottom: 5px;
+            background: white;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 13px;
+            border: 1px solid transparent;
+            transition: all 0.3s;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .history-item:hover {
+            border-color: #6B8CFF;
+            background: #F0F3FF;
+        }
+        
+        .history-item.active {
+            background: #6B8CFF;
+            color: white;
+            border-color: #6B8CFF;
+        }
+        
+        .history-item.active .time {
+            color: rgba(255,255,255,0.8);
+        }
+        
+        .history-item .time {
+            font-size: 11px;
+            color: #999;
+            margin-top: 3px;
+        }
+        
+        .history-item .delete {
+            opacity: 0;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            color: #999;
+            cursor: pointer;
+        }
+        
+        .history-item:hover .delete {
+            opacity: 1;
+        }
+        
+        .history-item .delete:hover {
+            background: #FF6B6B;
+            color: white;
+        }
+        
+        .main-chat {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: white;
+        }
+        
+        .chat-header {
+            background: #6B8CFF;
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+        
+        .chat-header h1 {
+            font-size: 24px;
+            margin-bottom: 5px;
+        }
+        
+        .chat-header p {
+            font-size: 14px;
+            opacity: 0.9;
+        }
+        
+        .header-buttons {
+            padding: 15px 20px;
+            border-bottom: 1px solid #E0E0E0;
+            display: flex;
+            gap: 10px;
+            background: white;
+        }
+        
+        .header-btn {
+            padding: 8px 20px;
+            border: 1px solid #E0E0E0;
+            background: white;
+            border-radius: 20px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .header-btn:hover {
+            background: #F0F3FF;
+            border-color: #6B8CFF;
+        }
+        
+        .chat-messages {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+            background: #F5F7FB;
+        }
+        
+        .message {
+            margin-bottom: 20px;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .message.user {
+            align-items: flex-end;
+        }
+        
+        .message.bot {
+            align-items: flex-start;
+        }
+        
+        .message-content {
+            max-width: 70%;
+            padding: 12px 18px;
+            border-radius: 18px;
+            font-size: 16px;
+            line-height: 1.5;
+            word-wrap: break-word;
+            white-space: pre-wrap;
+        }
+        
+        .user .message-content {
+            background: #6B8CFF;
+            color: white;
+            border-bottom-right-radius: 5px;
+        }
+        
+        .bot .message-content {
+            background: white;
+            color: #333;
+            border-bottom-left-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        
+        .message-time {
+            font-size: 12px;
+            color: #999;
+            margin-top: 5px;
+            margin-left: 10px;
+            margin-right: 10px;
+        }
+        
+        .warning-message {
+            background: #FFF3CD;
+            color: #856404;
+            padding: 10px 20px;
+            margin: 10px 20px;
+            border-radius: 10px;
+            font-size: 14px;
+            border-left: 4px solid #FFD700;
+            display: none;
+        }
+        
+        /* 语音输入区域优化样式 - 按钮与发送按钮同高 */
+        .voice-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            position: relative;
+            justify-content: center;
+        }
+        
+        .voice-btn-wrapper {
+            position: relative;
+            display: inline-flex;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .sound-wave {
+            position: absolute;
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background: rgba(255, 107, 107, 0.3);
+            pointer-events: none;
+            opacity: 0;
+            transform: scale(0.8);
+            transition: all 0.1s ease;
+        }
+        
+        .sound-wave.active {
+            opacity: 1;
+            animation: soundWavePulse 0.3s ease-out;
+        }
+        
+        @keyframes soundWavePulse {
+            0% {
+                transform: scale(0.8);
+                opacity: 0.5;
+            }
+            100% {
+                transform: scale(1.4);
+                opacity: 0;
+            }
+        }
+        
+        /* 语音按钮 - 与发送按钮同高度 */
+        .voice-btn {
+            width: 50px;
+            height: 52px;
+            border-radius: 30px;
+            background: white;
+            border: 2px solid #E0E0E0;
+            font-size: 24px;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            z-index: 2;
+        }
+        
+        .voice-btn:hover {
+            transform: scale(1.02);
+            border-color: #6B8CFF;
+        }
+        
+        .voice-btn.idle {
+            background: white;
+            border-color: #E0E0E0;
+            color: #666;
+        }
+        
+        .voice-btn.recording {
+            background: #FF6B6B;
+            border-color: #FF6B6B;
+            color: white;
+            animation: pulse 1s infinite;
+        }
+        
+        .voice-btn.recognizing {
+            background: #FFA500;
+            border-color: #FFA500;
+            color: white;
+        }
+        
+        .voice-btn.complete {
+            background: #4CAF50;
+            border-color: #4CAF50;
+            color: white;
+            animation: blink 0.3s 2;
+        }
+        
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+        
+        @keyframes blink {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+        
+        /* 隐藏状态文字和进度条，保持界面简洁 */
+        .voice-status {
+            display: none;
+        }
+        
+        .recording-progress {
+            display: none;
+        }
+        
+        .chat-input-area {
+            padding: 20px;
+            background: white;
+            border-top: 1px solid #E0E0E0;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        
+        .chat-input-area input {
+            flex: 1;
+            padding: 15px 20px;
+            border: 2px solid #E0E0E0;
+            border-radius: 30px;
+            font-size: 16px;
+            outline: none;
+            transition: all 0.3s;
+        }
+        
+        .chat-input-area input:focus {
+            border-color: #6B8CFF;
+        }
+        
+        .chat-input-area input.recognizing-input {
+            border-color: #FFA500;
+            animation: borderFlow 1s infinite;
+            box-shadow: 0 0 8px rgba(255, 165, 0, 0.3);
+        }
+        
+        @keyframes borderFlow {
+            0% { border-color: #FFA500; box-shadow: 0 0 0px rgba(255, 165, 0, 0.3); }
+            50% { border-color: #FF8C00; box-shadow: 0 0 12px rgba(255, 140, 0, 0.5); }
+            100% { border-color: #FFA500; box-shadow: 0 0 0px rgba(255, 165, 0, 0.3); }
+        }
+        
+        .chat-input-area input:disabled {
+            background: #F5F5F5;
+            cursor: not-allowed;
+        }
+        
+        /* 发送按钮 - 与语音按钮同高度 */
+        .chat-input-area button {
+            padding: 0;
+            width: 50px;
+            height: 52px;
+            background: #6B8CFF;
+            color: white;
+            border: none;
+            border-radius: 30px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .chat-input-area button:hover {
+            background: #5A7AE0;
+        }
+        
+        .chat-input-area button:disabled {
+            background: #CCCCCC;
+            cursor: not-allowed;
+        }
+        
+        .status-bar {
+            padding: 10px 20px;
+            background: #F8F9FA;
+            border-top: 1px solid #E0E0E0;
+            font-size: 14px;
+            color: #666;
+            display: flex;
+            justify-content: space-between;
+        }
+        
+        .typing-indicator {
+            display: flex;
+            gap: 5px;
+            padding: 15px 20px;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            width: fit-content;
+        }
+        
+        .typing-indicator span {
+            width: 8px;
+            height: 8px;
+            background: #999;
+            border-radius: 50%;
+            animation: typing 1.4s infinite;
+        }
+        
+        .typing-indicator span:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+        
+        .typing-indicator span:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+        
+        @keyframes typing {
+            0%, 60%, 100% {
+                transform: translateY(0);
+                opacity: 0.6;
+            }
+            30% {
+                transform: translateY(-10px);
+                opacity: 1;
+            }
+        }
+        
+        .summary-message .message-content {
+            background: #E8F0FE;
+            font-family: monospace;
+            white-space: pre-wrap;
+            line-height: 1.6;
+        }
+        
+        .result-toast {
+            position: fixed;
+            bottom: 100px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #4CAF50;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 20px;
+            font-size: 14px;
+            z-index: 1000;
+            opacity: 0;
+            transition: opacity 0.3s;
+            pointer-events: none;
+            white-space: nowrap;
+        }
+        
+        .result-toast.show {
+            opacity: 1;
+        }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <div class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <button class="new-chat-btn" onclick="newChat()">
+                    <span>+</span> 开启新对话
+                </button>
+                <button class="collapse-btn" data-tooltip="收起边栏" onclick="toggleSidebar()">
+                    ◀
+                </button>
+            </div>
+            <div class="sidebar-content" id="sidebarContent">
+                <div class="history-title">历史对话</div>
+                <div id="historyList"></div>
+            </div>
+        </div>
+        
+        <div class="main-chat">
+            <div class="chat-header">
+                <h1>小智 · 儿童AI聊天机器人</h1>
+                <p>你的专属聊天伙伴，安全、友好、有趣</p>
+            </div>
+            <div class="header-buttons">
+                <button class="header-btn" onclick="generateSummary()">摘要</button>
+                <button class="header-btn" onclick="clearHistory()">清空</button>
+            </div>
+            <div class="chat-messages" id="chatMessages">
+                <div class="message bot">
+                    <div class="message-content">你好呀！我是小智，很高兴认识你！</div>
+                    <div class="message-time">刚刚</div>
+                </div>
+            </div>
+            <div class="warning-message" id="warningMessage"></div>
+            <div class="chat-input-area">
+                <div class="voice-container">
+                    <div class="voice-btn-wrapper">
+                        <div class="sound-wave" id="soundWave"></div>
+                        <button class="voice-btn idle" id="voiceBtn" onclick="toggleVoiceInput()">🎙️</button>
+                    </div>
+                    <div class="voice-status" id="voiceStatus" style="display: none;"></div>
+                    <div class="recording-progress" id="recordingProgress" style="display: none;">
+                        <div class="progress-bar" id="progressBar"></div>
+                    </div>
+                </div>
+                <input type="text" id="userInput" placeholder="输入你想说的话..." onkeypress="handleKeyPress(event)">
+                <button id="sendBtn" onclick="sendMessage()">发送</button>
+            </div>
+            <div class="status-bar">
+                <span id="statusText">√ 已连接</span>
+                <span id="statsText">0轮对话</span>
+            </div>
+        </div>
+    </div>
+    
+    <div class="result-toast" id="resultToast">识别完成</div>
+    
+    <script>
+        let sessionId = generateSessionId();
+        let isWaiting = false;
+        let currentChatId = Date.now();
+        let isRecording = false;
+        let isRecognizing = false;
+        let recordingInterval = null;
+        let progressInterval = null;
+        let recordingStartTime = 0;
+        let maxRecordTime = 10000;
+        let dotInterval = null;
+        let dotCount = 0;
+        
+        function generateSessionId() {
+            return 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+        }
+        
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            const btn = document.querySelector('.collapse-btn');
+            sidebar.classList.toggle('collapsed');
+            btn.innerHTML = sidebar.classList.contains('collapsed') ? '▶' : '◀';
+            btn.setAttribute('data-tooltip', sidebar.classList.contains('collapsed') ? '展开边栏' : '收起边栏');
+        }
+        
+        function newChat() {
+            if (currentChatId) {
+                saveCurrentChat();
+            }
+            
+            document.getElementById('chatMessages').innerHTML = `
+                <div class="message bot">
+                    <div class="message-content">你好呀！我是小智，很高兴认识你！</div>
+                    <div class="message-time">刚刚</div>
+                </div>
+            `;
+            
+            currentChatId = Date.now();
+            document.getElementById('statsText').innerHTML = '0轮对话';
+            removeActiveClass();
+        }
+        
+        function saveCurrentChat() {
+            const messages = [];
+            const messageElements = document.querySelectorAll('#chatMessages .message');
+            for (let msg of messageElements) {
+                const role = msg.classList.contains('user') ? 'user' : 'bot';
+                const content = msg.querySelector('.message-content')?.textContent || '';
+                if (content && content !== '你好呀！我是小智，很高兴认识你！') {
+                    messages.push({role: role, content: content});
+                }
+            }
+            
+            if (messages.length > 0) {
+                fetch('/save_chat', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        session_id: sessionId,
+                        chat_id: currentChatId,
+                        messages: messages
+                    })
+                });
+                
+                let preview = '新对话';
+                for (let msg of messages) {
+                    if (msg.role === 'user') {
+                        preview = msg.content.substring(0, 15) + (msg.content.length > 15 ? '...' : '');
+                        break;
+                    }
+                }
+                addToHistory(currentChatId, preview);
+            }
+        }
+        
+        function addToHistory(chatId, preview) {
+            const historyList = document.getElementById('historyList');
+            const now = new Date();
+            const timeStr = `${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}`;
+            const existing = document.querySelector(`.history-item[data-chatid="${chatId}"]`);
+            if (existing) return;
+            
+            const item = document.createElement('div');
+            item.className = 'history-item';
+            item.setAttribute('data-chatid', chatId);
+            item.onclick = () => loadChat(chatId);
+            item.innerHTML = `
+                <div style="flex:1;">
+                    <div>${preview}</div>
+                    <div class="time">${timeStr}</div>
+                </div>
+                <div class="delete" onclick="deleteHistory(event, ${chatId})">×</div>
+            `;
+            historyList.insertBefore(item, historyList.firstChild);
+        }
+        
+        async function loadChat(chatId) {
+            removeActiveClass();
+            const selectedItem = document.querySelector(`.history-item[data-chatid="${chatId}"]`);
+            if (selectedItem) {
+                selectedItem.classList.add('active');
+            }
+            
+            try {
+                const response = await fetch('/load_history', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        session_id: sessionId,
+                        chat_id: chatId
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success && data.messages) {
+                    document.getElementById('chatMessages').innerHTML = '';
+                    for (let msg of data.messages) {
+                        const messageDiv = document.createElement('div');
+                        messageDiv.className = `message ${msg.role}`;
+                        const now = new Date();
+                        const timeStr = `${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}`;
+                        messageDiv.innerHTML = `
+                            <div class="message-content" style="white-space: pre-wrap;">${escapeHtml(msg.content)}</div>
+                            <div class="message-time">${timeStr}</div>
+                        `;
+                        document.getElementById('chatMessages').appendChild(messageDiv);
+                    }
+                    document.getElementById('statsText').innerHTML = (data.messages.length / 2) + '轮对话';
+                    currentChatId = chatId;
+                    document.getElementById('chatMessages').scrollTop = document.getElementById('chatMessages').scrollHeight;
+                }
+            } catch (error) {
+                console.error('加载历史失败:', error);
+            }
+        }
+        
+        function removeActiveClass() {
+            const items = document.querySelectorAll('.history-item');
+            items.forEach(item => item.classList.remove('active'));
+        }
+        
+        function deleteHistory(event, chatId) {
+            event.stopPropagation();
+            const item = document.querySelector(`.history-item[data-chatid="${chatId}"]`);
+            if (item) {
+                if (currentChatId == chatId) {
+                    newChat();
+                }
+                item.remove();
+            }
+        }
+        
+        function handleKeyPress(event) {
+            if (event.key === 'Enter' && !isWaiting && !isRecording && !isRecognizing) sendMessage();
+        }
+        
+        async function generateSummary() {
+            if (isWaiting || isRecording || isRecognizing) return;
+            showTyping();
+            try {
+                const response = await fetch('/chat', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({message: '/summary', session_id: sessionId})
+                });
+                const data = await response.json();
+                hideTyping();
+                if (data.reply) {
+                    const messagesDiv = document.getElementById('chatMessages');
+                    const messageDiv = document.createElement('div');
+                    messageDiv.className = 'message bot summary-message';
+                    const now = new Date();
+                    const timeStr = `${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}`;
+                    messageDiv.innerHTML = `
+                        <div class="message-content" style="white-space: pre-wrap;">${escapeHtml(data.reply)}</div>
+                        <div class="message-time">${timeStr}</div>
+                    `;
+                    messagesDiv.appendChild(messageDiv);
+                    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+                }
+            } catch (error) {
+                hideTyping();
+                const messagesDiv = document.getElementById('chatMessages');
+                const messageDiv = document.createElement('div');
+                messageDiv.className = 'message bot';
+                messageDiv.innerHTML = '<div class="message-content">× 生成摘要失败</div>';
+                messagesDiv.appendChild(messageDiv);
+            }
+        }
+        
+        async function toggleVoiceInput() {
+            if (isRecording) {
+                await stopVoiceRecording();
+            } else if (!isRecognizing) {
+                await startVoiceRecording();
+            }
+        }
+        
+        function addSoundWave() {
+            const soundWave = document.getElementById('soundWave');
+            soundWave.classList.add('active');
+            setTimeout(() => {
+                soundWave.classList.remove('active');
+            }, 300);
+        }
+        
+        function startProgressBar() {
+            // 进度条功能已隐藏，保留空函数避免报错
+        }
+        
+        function stopProgressBar() {
+            // 进度条功能已隐藏，保留空函数避免报错
+        }
+        
+        function startDotAnimation() {
+            // 状态文字已隐藏，保留空函数避免报错
+        }
+        
+        function stopDotAnimation() {
+            // 状态文字已隐藏，保留空函数避免报错
+        }
+        
+        function updateStatus(message, type) {
+            // 状态文字已隐藏，保留空函数避免报错
+        }
+        
+        function showResultToast(message, isError = false) {
+            const toast = document.getElementById('resultToast');
+            toast.textContent = message;
+            toast.style.background = isError ? '#FF4444' : '#4CAF50';
+            toast.classList.add('show');
+            setTimeout(() => {
+                toast.classList.remove('show');
+            }, 2000);
+        }
+        
+        function setInputState(disabled, isRecognizingMode = false) {
+            const input = document.getElementById('userInput');
+            const sendBtn = document.getElementById('sendBtn');
+            input.disabled = disabled;
+            sendBtn.disabled = disabled;
+            
+            if (isRecognizingMode) {
+                input.classList.add('recognizing-input');
+                input.placeholder = '正在识别语音...';
+            } else {
+                input.classList.remove('recognizing-input');
+                input.placeholder = '输入你想说的话...';
+            }
+        }
+        
+        function setButtonState(state) {
+            const btn = document.getElementById('voiceBtn');
+            btn.className = 'voice-btn ' + state;
+        }
+        
+        async function startVoiceRecording() {
+            try {
+                const response = await fetch('/start_recording', {method: 'POST'});
+                const data = await response.json();
+                
+                if (data.success) {
+                    isRecording = true;
+                    setButtonState('recording');
+                    updateStatus('正在录音... 点击结束', 'recording');
+                    
+                    const soundInterval = setInterval(() => {
+                        if (isRecording) {
+                            addSoundWave();
+                        } else {
+                            clearInterval(soundInterval);
+                        }
+                    }, 300);
+                    
+                    window.currentSoundInterval = soundInterval;
+                    
+                    // 自动停止录音（10秒后）
+                    setTimeout(() => {
+                        if (isRecording) {
+                            stopVoiceRecording();
+                        }
+                    }, 10000);
+                } else {
+                    showResultToast('启动录音失败', true);
+                }
+            } catch (error) {
+                console.error('启动录音失败:', error);
+                showResultToast('启动录音失败', true);
+            }
+        }
+        
+        async function stopVoiceRecording() {
+            if (window.currentSoundInterval) {
+                clearInterval(window.currentSoundInterval);
+                window.currentSoundInterval = null;
+            }
+            
+            isRecording = false;
+            setButtonState('recognizing');
+            setInputState(true, true);
+            isRecognizing = true;
+            
+            try {
+                const response = await fetch('/stop_recording', {method: 'POST'});
+                const data = await response.json();
+                
+                isRecognizing = false;
+                setInputState(false, false);
+                
+                if (data.success && data.text) {
+                    const input = document.getElementById('userInput');
+                    input.value = data.text;
+                    setButtonState('complete');
+                    showResultToast('识别完成: ' + (data.text.length > 20 ? data.text.substring(0, 20) + '...' : data.text));
+                    
+                    setTimeout(() => {
+                        setButtonState('idle');
+                    }, 1500);
+                } else {
+                    setButtonState('idle');
+                    showResultToast('识别失败，请重试', true);
+                }
+            } catch (error) {
+                console.error('停止录音失败:', error);
+                isRecognizing = false;
+                setInputState(false, false);
+                setButtonState('idle');
+                showResultToast('识别失败，请重试', true);
+            }
+        }
+        
+        async function sendMessage() {
+            const input = document.getElementById('userInput');
+            const message = input.value.trim();
+            if (message === '' || isWaiting || isRecording || isRecognizing) return;
+            
+            const now = new Date();
+            const timeStr = `${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}`;
+            const messagesDiv = document.getElementById('chatMessages');
+            const userDiv = document.createElement('div');
+            userDiv.className = 'message user';
+            userDiv.innerHTML = `<div class="message-content" style="white-space: pre-wrap;">${escapeHtml(message)}</div><div class="message-time">${timeStr}</div>`;
+            messagesDiv.appendChild(userDiv);
+            input.value = '';
+            
+            showTyping();
+            
+            try {
+                const response = await fetch('/chat', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({message: message, session_id: sessionId})
+                });
+                
+                const data = await response.json();
+                hideTyping();
+                
+                if (data.warning) {
+                    const warningDiv = document.getElementById('warningMessage');
+                    warningDiv.style.display = 'block';
+                    warningDiv.textContent = '⚠ ' + data.warning;
+                } else {
+                    document.getElementById('warningMessage').style.display = 'none';
+                }
+                
+                const botDiv = document.createElement('div');
+                botDiv.className = 'message bot';
+                botDiv.innerHTML = `<div class="message-content" style="white-space: pre-wrap;">${escapeHtml(data.reply)}</div><div class="message-time">${timeStr}</div>`;
+                messagesDiv.appendChild(botDiv);
+                messagesDiv.scrollTop = messagesDiv.scrollHeight;
+                
+                if (data.rounds !== undefined) {
+                    document.getElementById('statsText').innerHTML = data.rounds + '轮对话';
+                }
+                
+                saveCurrentChat();
+                
+            } catch (error) {
+                hideTyping();
+                const botDiv = document.createElement('div');
+                botDiv.className = 'message bot';
+                botDiv.innerHTML = '<div class="message-content">× 网络错误，请重试</div>';
+                messagesDiv.appendChild(botDiv);
+            }
+        }
+        
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        function showTyping() {
+            isWaiting = true;
+            document.getElementById('sendBtn').disabled = true;
+            const messagesDiv = document.getElementById('chatMessages');
+            const typingDiv = document.createElement('div');
+            typingDiv.className = 'message bot';
+            typingDiv.id = 'typingIndicator';
+            typingDiv.innerHTML = '<div class="typing-indicator"><span></span><span></span><span></span></div>';
+            messagesDiv.appendChild(typingDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+        
+        function hideTyping() {
+            isWaiting = false;
+            document.getElementById('sendBtn').disabled = false;
+            const typingIndicator = document.getElementById('typingIndicator');
+            if (typingIndicator) typingIndicator.remove();
+        }
+        
+        async function clearHistory() {
+            if (!confirm('确定清空当前对话吗？')) return;
+            try {
+                await fetch('/clear', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({session_id: sessionId})
+                });
+                document.getElementById('chatMessages').innerHTML = `
+                    <div class="message bot">
+                        <div class="message-content">你好呀！我是小智，很高兴认识你！</div>
+                        <div class="message-time">刚刚</div>
+                    </div>
+                `;
+                document.getElementById('statsText').innerHTML = '0轮对话';
+                document.getElementById('warningMessage').style.display = 'none';
+                removeActiveClass();
+            } catch (error) {
+                console.error(error);
+            }
+        }
+        
+        setInterval(function() {
+            const messages = [];
+            const messageElements = document.querySelectorAll('#chatMessages .message');
+            for (let msg of messageElements) {
+                const role = msg.classList.contains('user') ? 'user' : 'bot';
+                const content = msg.querySelector('.message-content')?.textContent || '';
+                if (content && content !== '你好呀！我是小智，很高兴认识你！') {
+                    messages.push({role: role, content: content});
+                }
+            }
+            if (messages.length > 0) {
+                fetch('/save_chat', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        session_id: sessionId,
+                        chat_id: currentChatId,
+                        messages: messages
+                    })
+                });
+            }
+        }, 3000);
+    </script>
+</body>
+</html>
+    '''
+
+@app.route('/chat', methods=['POST'])
+def chat():
+    """处理聊天请求"""
+    data = request.json
+    user_message = data.get('message', '')
+    session_id = data.get('session_id', 'default')
+    chat_id = data.get('chat_id', 'current')
+    
+    if session_id not in chat_sessions:
+        chat_sessions[session_id] = {}
+    
+    if chat_id not in chat_sessions[session_id]:
+        chat_sessions[session_id][chat_id] = []
+    
+    history = chat_sessions[session_id][chat_id]
+    
+    if user_message.startswith('/'):
+        cmd = user_message[1:].lower()
+        
+        if cmd == 'clear':
+            chat_sessions[session_id][chat_id] = []
+            return jsonify({'reply': '√ 历史已清空', 'rounds': 0})
+        
+        elif cmd == 'summary':
+            if 'generate_conversation_summary' in globals():
+                child_name = "小朋友"
+                summary = generate_conversation_summary(history, child_name)
+            else:
+                summary = "暂无摘要功能"
+            return jsonify({'reply': summary, 'rounds': len(history) // 2})
+    
+    result = chat_complete(user_message, history)
+    chat_sessions[session_id][chat_id] = result['history']
+    
+    return jsonify({
+        'reply': result['reply'],
+        'warning': result.get('user_warning'),
+        'response_time': result.get('response_time', '0秒'),
+        'rounds': result['rounds'],
+        'success': result['success']
+    })
+
+@app.route('/clear', methods=['POST'])
+def clear():
+    """清空当前会话历史"""
+    data = request.json
+    session_id = data.get('session_id', 'default')
+    chat_id = data.get('chat_id', 'current')
+    
+    if session_id in chat_sessions and chat_id in chat_sessions[session_id]:
+        chat_sessions[session_id][chat_id] = []
+    
+    return jsonify({'success': True})
+
+@app.route('/load_history', methods=['POST'])
+def load_history():
+    """加载指定会话的历史记录"""
+    data = request.json
+    session_id = data.get('session_id', 'default')
+    chat_id = data.get('chat_id', 'current')
+    
+    if session_id not in chat_sessions:
+        return jsonify({'success': False, 'error': '会话不存在'})
+    
+    if chat_id not in chat_sessions[session_id]:
+        return jsonify({'success': True, 'messages': [], 'rounds': 0})
+    
+    history = chat_sessions[session_id][chat_id]
+    
+    messages = []
+    for i in range(0, len(history), 2):
+        if i < len(history):
+            messages.append({
+                'role': 'user',
+                'content': history[i]['content']
+            })
+        if i+1 < len(history):
+            messages.append({
+                'role': 'bot',
+                'content': history[i+1]['content']
+            })
+    
+    return jsonify({
+        'success': True,
+        'messages': messages,
+        'rounds': len(history) // 2
+    })
+
+@app.route('/save_chat', methods=['POST'])
+def save_chat():
+    """保存对话历史"""
+    data = request.json
+    session_id = data.get('session_id', 'default')
+    chat_id = data.get('chat_id', 'current')
+    messages = data.get('messages', [])
+    
+    if session_id not in chat_sessions:
+        chat_sessions[session_id] = {}
+    
+    history = []
+    for msg in messages:
+        history.append({"role": msg['role'], "content": msg['content']})
+    
+    chat_sessions[session_id][chat_id] = history
+    
+    return jsonify({'success': True})
+
+print("=" * 60)
+print("√ 网页路由函数加载成功")
+print("√ 语音识别模块已从单元格9导入")
+print("√ 语音按钮与发送按钮已设置为同等高度")
+print("=" * 60)
+
+
+
+#单元格11：启动网页服务器（简化版）
+
+import threading
+import webbrowser
+import time
+
+# 全局变量控制服务器状态
+server_thread = None
+server_running = False
+
+def run_flask(port):
+    """在后台线程中运行Flask"""
+    global server_running
+    try:
+        server_running = True
+        app.run(host='127.0.0.1', port=port, debug=False, threaded=True)
+    except Exception as e:
+        print(f"× 服务器错误: {e}")
+        server_running = False
+
+def start_web_server(port=5000, auto_open=True):
+    """启动网页服务器"""
+    global server_thread, server_running
+    
+    if server_running:
+        print("√ 服务器已在运行中")
+        return
+    
+    print("\n" + "=" * 60)
+    print("启动网页服务器")
+    print("=" * 60)
+    print(f"√ 机器人名字: {BOT_NAME}")
+    print(f"√ 模型: {MODEL_NAME}")
+    print(f"√ 敏感词库: {len(ALL_SENSITIVE_WORDS)}个")
+    print(f"√ 活跃会话: {len(chat_sessions)}个")
+    print("-" * 40)
+    
+    local_url = f"http://127.0.0.1:{port}"
+    print(f"访问地址: {local_url}")
+    print("-" * 40)
+    
+    server_thread = threading.Thread(target=run_flask, args=(port,), daemon=True)
+    server_thread.start()
+    
+    print("√ 服务器已启动 (后台运行)")
+    
+    if auto_open:
+        time.sleep(1.5)
+        try:
+            webbrowser.open(local_url)
+            print(f"√ 已自动打开浏览器")
+        except:
+            print(f"× 自动打开失败，请手动访问: {local_url}")
+    
+    print("=" * 60)
+
+def check_server_status():
+    """检查服务器状态"""
+    if server_running:
+        print("\n" + "=" * 60)
+        print("服务器状态")
+        print("=" * 60)
+        print(f"√ 服务器正在运行")
+        print(f"√ 访问地址: http://127.0.0.1:5000")
+        print(f"√ 活跃会话: {len(chat_sessions)}个")
+        print("=" * 60)
+    else:
+        print("× 服务器未运行")
+
+
+print("网页服务器控制函数加载完成")
+print("-" * 40)
+print("\n可用命令:")
+print("  start_web_server()     - 启动服务器")
+print("  check_server_status()  - 查看服务器状态")
+
+
+#- 启动服务器
+start_web_server()     
+#指定端口
+#start_web_server(port=8080) 

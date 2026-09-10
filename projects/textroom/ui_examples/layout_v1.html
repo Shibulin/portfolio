@@ -1,0 +1,716 @@
+<!DOCTYPE html>
+<!-- ⚠️ 已冻结（2026-09-08）：此文件为布局设计参考稿，正式实现已迁移至 frontend/index.html。
+     两者的按钮文案 / 关卡流程 / 保险箱逻辑已不再同步，请勿以此文件为最新参照。 -->
+<html lang="zh-CN" data-page-node-id="Tfft3ug4pORHlSyGcbIyCL">
+<head data-page-node-id="xMxjJt97mHZlFw7gSd47j2">
+<meta charset="UTF-8" data-page-node-id="8vPe1m3AdieNxbEEHrjOUk">
+<meta name="viewport" content="width=device-width, initial-scale=1.0" data-page-node-id="HFEW3SE5EHRuTAFpwnpzg9">
+<title>密室逃脱 · 布局示例 v1（方案一沉浸式）</title>
+<style>
+  :root{
+    --bg:#141019; --panel:rgba(20,16,28,.82); --panel-border:rgba(255,255,255,.10);
+    --accent:#c9a15c; --accent2:#8a6dc9; --text:#efe9dd; --dim:#a89f92;
+    --danger:#d4886a; --ok:#7fbf7f;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;user-select:none}
+  html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);
+    font-family:"Microsoft YaHei","PingFang SC",sans-serif}
+
+  /* ===== 场景层（全屏沉浸，底图铺满整个屏幕） ===== */
+  #scene{position:fixed;inset:0;}
+  #scene svg{width:100%;height:100%;display:block}
+  .hotspot{position:absolute;transform:translate(-50%,-50%);
+    background:rgba(15,12,20,.55);border:1px solid rgba(255,255,255,.25);
+    color:var(--text);padding:6px 12px;border-radius:20px;cursor:pointer;
+    font-size:14px;backdrop-filter:blur(3px);transition:.15s;white-space:nowrap}
+  .hotspot:hover{background:var(--accent);color:#1c1408;border-color:var(--accent)}
+
+  /* ===== 顶部 HUD ===== */
+  #hud{position:fixed;top:0;left:0;right:240px;display:flex;gap:10px;
+    padding:12px 16px;pointer-events:none;z-index:20;align-items:flex-start}
+  .hud-chip{background:var(--panel);border:1px solid var(--panel-border);
+    border-radius:8px;padding:6px 14px;font-size:13px;pointer-events:auto}
+  #levelTabs{display:flex;gap:6px}
+  .lvl-tab{cursor:pointer}
+  .lvl-tab.active{background:var(--accent);color:#1c1408;font-weight:bold}
+  #progressWrap{flex:1;max-width:320px;height:8px;margin-top:8px;
+    background:rgba(255,255,255,.12);border-radius:4px;overflow:hidden}
+  #progressBar{height:100%;width:0;background:linear-gradient(90deg,var(--accent),var(--accent2));
+    transition:width .4s}
+
+  /* ===== 右侧边栏（背包 / 线索）—— 更窄 + 低透明度，可透出场景底图 ===== */
+  #sidebar{position:fixed;top:0;right:0;bottom:0;width:240px;z-index:60;
+    background:rgba(18,14,26,.45);border-left:1px solid rgba(255,255,255,.08);
+    display:flex;flex-direction:column;backdrop-filter:blur(2px)}
+  #sideTabs{display:flex;border-bottom:1px solid var(--panel-border)}
+  .side-tab{flex:1;padding:14px 0;text-align:center;cursor:pointer;font-size:15px;
+    color:var(--dim);border-bottom:2px solid transparent}
+  .side-tab.active{color:var(--text);border-bottom-color:var(--accent);font-weight:bold}
+  .side-tab .badge{display:inline-block;min-width:18px;padding:1px 5px;margin-left:4px;
+    border-radius:9px;background:var(--accent);color:#1c1408;font-size:11px}
+  #sideBody{flex:1;overflow-y:auto;padding:12px}
+  .inv-item{display:flex;align-items:center;gap:10px;padding:9px 10px;margin-bottom:8px;
+    background:rgba(255,255,255,.05);border:1px solid var(--panel-border);
+    border-radius:8px;cursor:pointer;font-size:14px;transition:.15s}
+  .inv-item:hover{border-color:var(--accent)}
+  .inv-item .em{font-size:20px}
+  .clue-item{padding:9px 10px;margin-bottom:8px;background:rgba(255,255,255,.04);
+    border-left:3px solid var(--accent2);border-radius:0 8px 8px 0;font-size:13px;
+    color:var(--dim);line-height:1.5}
+  .empty-hint{text-align:center;color:var(--dim);font-size:13px;padding:30px 10px;line-height:1.8}
+
+  /* ===== 底部旁白框 —— 图层在最上（压过边栏），低透明度透出场景 ===== */
+  #narration{position:fixed;left:16px;right:16px;bottom:14px;z-index:70;
+    background:rgba(15,12,20,.5);border:1px solid rgba(255,255,255,.08);border-radius:12px;
+    padding:14px 18px;min-height:78px;max-height:150px;overflow-y:auto;
+    font-size:14.5px;line-height:1.7;backdrop-filter:blur(2px)}
+  #narration .narr-old{color:var(--dim)}
+  #narration .narr-new{color:var(--text)}
+  #narration .narr-ok{color:var(--ok)}
+  #narration .narr-err{color:var(--danger)}
+
+  /* ===== 特写弹窗（居中 2/3） ===== */
+  #modalMask{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:40;
+    display:none;align-items:center;justify-content:center;padding-bottom:180px}
+  #modalMask.show{display:flex}
+  #closeup{width:66vw;max-width:900px;height:76vh;background:#1b1524;
+    border:1px solid var(--panel-border);border-radius:16px;overflow:hidden;
+    display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.6)}
+  #closeupHead{display:flex;justify-content:space-between;align-items:center;
+    padding:12px 18px;border-bottom:1px solid var(--panel-border)}
+  #closeupHead h3{font-size:16px;color:var(--accent)}
+  #closeupClose{cursor:pointer;background:none;border:none;color:var(--dim);font-size:20px}
+  #closeupBody{flex:1;display:flex;flex-direction:column;min-height:0}
+  #closeupImg{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;
+    background:#0e0b13;position:relative}
+  #closeupImg svg{max-width:62%;max-height:92%}
+  #closeupBottom{flex:none;height:26%;display:flex;flex-direction:column;gap:6px;
+    justify-content:flex-end;padding:10px 16px;min-height:0;
+    border-top:1px solid var(--panel-border);overflow-y:auto}
+  #closeupDesc{flex:none;font-size:12.5px;color:var(--dim);line-height:1.5}
+  #closeupActs{flex:none;display:flex;flex-direction:column;gap:6px}
+  .act-btn{padding:8px;border-radius:8px;border:1px solid var(--panel-border);
+    background:rgba(255,255,255,.06);color:var(--text);font-size:13px;cursor:pointer;
+    text-align:center;transition:.15s}
+  .act-btn:hover{background:var(--accent);color:#1c1408}
+  .act-btn.primary{border-color:var(--accent);color:var(--accent)}
+  .act-btn.primary:hover{color:#1c1408}
+  .act-btn:disabled{opacity:.35;cursor:not-allowed}
+  .act-btn:disabled:hover{background:rgba(255,255,255,.06);color:var(--text)}
+
+  /* ===== 密码输入弹窗 ===== */
+  #pwdMask{position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:50;
+    display:none;align-items:center;justify-content:center;padding-bottom:180px}
+  #pwdMask.show{display:flex}
+  #pwdBox{background:#1b1524;border:1px solid var(--panel-border);border-radius:16px;
+    padding:24px;width:320px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.7)}
+  #pwdBox h3{margin-bottom:6px;color:var(--accent);font-size:15px}
+  #pwdBox .sub{color:var(--dim);font-size:12px;margin-bottom:14px}
+  #pwdDots{display:flex;gap:10px;justify-content:center;margin-bottom:16px}
+  .pwd-dot{width:38px;height:48px;border:1px solid var(--panel-border);border-radius:8px;
+    display:flex;align-items:center;justify-content:center;font-size:22px;
+    background:rgba(255,255,255,.05);color:var(--accent);font-family:monospace}
+  #pwdPad{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+  .pad-key{padding:13px 0;border-radius:8px;border:1px solid var(--panel-border);
+    background:rgba(255,255,255,.06);color:var(--text);font-size:17px;cursor:pointer}
+  .pad-key:active{background:var(--accent);color:#1c1408}
+  .pad-key.ok{border-color:var(--accent);color:var(--accent)}
+  .pad-key.cancel{border-color:var(--danger);color:var(--danger)}
+  #pwdMsg{margin-top:10px;font-size:12px;color:var(--danger);min-height:16px}
+
+  ::-webkit-scrollbar{width:6px}
+  ::-webkit-scrollbar-thumb{background:rgba(255,255,255,.15);border-radius:3px}
+</style>
+</head>
+<body data-page-node-id="RikvHOjKjADaL5yJAIjZBV">
+
+<!-- ===================== 场景层 ===================== -->
+<div id="scene" data-page-node-id="e9GNcu8agbPqkv65e7AcAk">
+  <div id="bgHolder" data-page-node-id="P5BHtCITz8JEcAJdUmkOWQ"></div>
+  <div id="hotspotHolder" data-page-node-id="uLd3XhFOmNKbfpyQfTexMK"></div>
+</div>
+
+<!-- ===================== 顶部 HUD ===================== -->
+<div id="hud" data-page-node-id="cBTApNUJst2aQYCIh4mTb8">
+  <div class="hud-chip" id="levelName" data-page-node-id="gJB0zIJtmat7MJp9dZBeCb">第 1 关 · 书房</div>
+  <div class="hud-chip" id="levelTabs" data-page-node-id="qT2ktEzOV9qeB2dUVoQCat">
+    <span class="lvl-tab active" data-lvl="study" data-page-node-id="g42PjwWEPrPDnD6ig5d0L6">书房</span>
+    <span class="lvl-tab" data-lvl="living_room" data-page-node-id="oEjSoBRqMC2YNk97fdbCEM">客厅</span>
+    <span class="lvl-tab" data-lvl="garage" data-page-node-id="i5FwxR6lRx7i3TCczbumUT">车库</span>
+  </div>
+  <div id="progressWrap" data-page-node-id="iR0haBGWkkcjU80B68sq6i"><div id="progressBar" data-page-node-id="hIINjFwKHIGK1p3SI8Kk48"></div></div>
+  <div class="hud-chip" id="progressTxt" data-page-node-id="EVlYlDOIXNZxNpePw2vuUY">0%</div>
+</div>
+
+<!-- ===================== 右侧边栏 ===================== -->
+<div id="sidebar" data-page-node-id="lWHvGKntsG0yXcNktAMH2F">
+  <div id="sideTabs" data-page-node-id="T8kcZTC8hkVRNvvECPB0Hw">
+    <div class="side-tab active" data-tab="inv" data-page-node-id="XL0rGw5GxmRervdUUTFHrZ">🎒 背包 <span class="badge" id="invBadge" data-page-node-id="crI8Ufrw7fFFf5EVUjKGij">0</span></div>
+    <div class="side-tab" data-tab="clue" data-page-node-id="3mBvFVXPlCSrd9J6969D8y">💡 线索 <span class="badge" id="clueBadge" data-page-node-id="ijBspYdMNgAvMqFGsMAKlw">0</span></div>
+  </div>
+  <div id="sideBody" data-page-node-id="GqLsOUUqErNTRmYqbiiAdW"></div>
+</div>
+
+<!-- ===================== 底部旁白 ===================== -->
+<div id="narration" data-page-node-id="0hIFBBtIljCR7iYFgWUt1n"></div>
+
+<!-- ===================== 特写弹窗 ===================== -->
+<div id="modalMask" data-page-node-id="sEQaS00FOlZIv4Dr0C51au">
+  <div id="closeup" data-page-node-id="eXEYNJZBFy1CHHfmSYtDF4">
+    <div id="closeupHead" data-page-node-id="VuLKljzq7gJvcGaBdG2ZTE">
+      <h3 id="closeupTitle" data-page-node-id="1GhvCwUCtSHjVhiAY3vVdV">—</h3>
+      <button id="closeupClose" data-page-node-id="ZjG6Gr0w2hxBiKQAy9Z20P">✕</button>
+    </div>
+    <div id="closeupBody" data-page-node-id="FBUHPZtLlb37qNHaWB76Em">
+      <div id="closeupImg" data-page-node-id="j9KCtB6Arg5GY8aZ7D0FDv"></div>
+      <div id="closeupBottom" data-page-node-id="3BiPUFWhdonhODkaOjF3RG">
+        <div id="closeupDesc" data-page-node-id="Ptrz1Nv2MxbV9xhw8uzHNz"></div>
+        <div id="closeupActs" data-page-node-id="uy0xjs90tGE4O1fUHCt7mR"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== 密码弹窗 ===================== -->
+<div id="pwdMask" data-page-node-id="p984ctX7AGjdCTBA72st9I">
+  <div id="pwdBox" data-page-node-id="sf48vAGbZD59BBOGtVqCWv">
+    <h3 id="pwdTitle" data-page-node-id="t2cLWnIGDzfhMlRSo5tiIT">输入密码</h3>
+    <div class="sub" id="pwdSub" data-page-node-id="CICMu7JQp4NhYGdhAHb7Nh"></div>
+    <div id="pwdDots" data-page-node-id="DwKZ4Gs83fS7bfvMFOXQdv"></div>
+    <div id="pwdPad" data-page-node-id="hIABkS9mwODrAUCHRAKXMp"></div>
+    <div id="pwdMsg" data-page-node-id="stR4pAhJJQFF7rIH1TIz4Y"></div>
+  </div>
+</div>
+
+<script>
+/* =====================================================================
+   布局示例 · 纯前端 Mock（不连后端）
+   方案一「沉浸式全屏」+ 用户 4 点优化：
+   1. 背包/线索 = 右侧边栏，顶部切换口
+   2. 密码输入 = 独立弹窗（按键键盘）
+   3. 点击场景按钮 = 居中特写弹窗（66% 宽 ≈ 2/3 屏）
+   4. 配套三关场景布局图（见 SVG 布局图 / 坐标即本页热点坐标）
+   ===================================================================== */
+
+/* ---------- 三关场景背景（占位 SVG，正式版换 AI 插画） ---------- */
+function bgStudy(){return `
+<svg viewBox="0 0 1280 720" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+  <defs><linearGradient id="g1" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#3a2c22"/><stop offset="1" stop-color="#241a13"/></linearGradient></defs>
+  <rect width="1280" height="720" fill="url(#g1)"/>
+  <rect y="560" width="1280" height="160" fill="#1c130c"/>
+  <!-- 书架 -->
+  <rect x="80" y="150" width="220" height="380" fill="#4a3421" rx="6"/>
+  ${[0,1,2,3].map(i=>`<rect x="92" y="${175+i*90}" width="196" height="70" fill="#2c1e12" rx="3"/>
+    ${[0,1,2,3,4,5].map(j=>`<rect x="${100+j*31}" y="${180+i*90}" width="20" height="60" fill="${['#7a5230','#5c6e46','#6e4a5c','#46586e','#7a6030','#556'][(i+j)%6]}" rx="2"/>`).join('')}`).join('')}
+  <!-- 画框 -->
+  <rect x="560" y="120" width="170" height="130" fill="#8a6a3a" rx="4"/>
+  <rect x="572" y="132" width="146" height="106" fill="#c8b48a" rx="2"/>
+  <circle cx="645" cy="185" r="34" fill="#a5825a"/>
+  <!-- 钟表 -->
+  <circle cx="840" cy="180" r="58" fill="#5a4228"/><circle cx="840" cy="180" r="46" fill="#e8dcc0"/>
+  <line x1="840" y1="180" x2="840" y2="148" stroke="#333" stroke-width="4"/>
+  <line x1="840" y1="180" x2="862" y2="180" stroke="#333" stroke-width="3"/>
+  <!-- 书桌 -->
+  <rect x="420" y="420" width="320" height="26" fill="#5a4228"/>
+  <rect x="440" y="446" width="40" height="110" fill="#4a3421"/>
+  <rect x="680" y="446" width="40" height="110" fill="#4a3421"/>
+  <!-- 保险箱 -->
+  <rect x="920" y="430" width="150" height="130" fill="#3a3f4a" rx="8"/>
+  <circle cx="995" cy="495" r="22" fill="#22262e"/><circle cx="995" cy="495" r="12" fill="#8892a2"/>
+</svg>`}
+
+function bgLiving(){return `
+<svg viewBox="0 0 1280 720" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+  <defs><linearGradient id="g2" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#403226"/><stop offset="1" stop-color="#261c14"/></linearGradient></defs>
+  <rect width="1280" height="720" fill="url(#g2)"/>
+  <rect y="560" width="1280" height="160" fill="#1f150c"/>
+  <!-- 大门 -->
+  <rect x="40" y="200" width="130" height="360" fill="#4a3421" rx="4"/>
+  <circle cx="150" cy="390" r="7" fill="#c9a15c"/>
+  <!-- 车库门（卷帘） -->
+  <rect x="440" y="130" width="400" height="330" fill="#4c525e" rx="4"/>
+  ${[0,1,2,3,4,5].map(i=>`<rect x="446" y="${140+i*52}" width="388" height="44" fill="#5a616e" rx="3"/>`).join('')}
+  <rect x="560" y="400" width="160" height="48" fill="#22262e" rx="6"/>
+  <circle cx="576" cy="424" r="4" fill="#7fbf7f"/><circle cx="594" cy="424" r="4" fill="#7fbf7f"/>
+  <circle cx="612" cy="424" r="4" fill="#7fbf7f"/><circle cx="630" cy="424" r="4" fill="#7fbf7f"/>
+  <!-- 电视柜 -->
+  <rect x="920" y="430" width="280" height="120" fill="#4a3421" rx="4"/>
+  <rect x="990" y="240" width="150" height="170" fill="#14161c" rx="6"/>
+  <rect x="998" y="248" width="134" height="154" fill="#1e2836" rx="3"/>
+  <!-- 沙发 -->
+  <rect x="140" y="440" width="240" height="110" fill="#6e4a3a" rx="14"/>
+  <rect x="140" y="400" width="240" height="60" fill="#82584a" rx="14"/>
+  <!-- 壁炉 -->
+  <rect x="1060" y="330" width="170" height="220" fill="#5c5650" rx="4"/>
+  <rect x="1090" y="400" width="110" height="120" fill="#141210"/>
+  <path d="M1125 510 q10 -30 25 -42 q-4 26 14 38 q10 -18 8 -34 q22 22 12 44 z" fill="#c9743a" opacity=".8"/>
+  <!-- 茶几 -->
+  <rect x="470" y="500" width="180" height="70" fill="#5a4228" rx="8"/>
+</svg>`}
+
+function bgGarage(){return `
+<svg viewBox="0 0 1280 720" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+  <defs><linearGradient id="g3" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#262c34"/><stop offset="1" stop-color="#171b21"/></linearGradient></defs>
+  <rect width="1280" height="720" fill="url(#g3)"/>
+  <rect y="560" width="1280" height="160" fill="#101317"/>
+  <!-- 出口门 -->
+  <rect x="40" y="210" width="140" height="350" fill="#3a4048" rx="4"/>
+  <rect x="52" y="222" width="116" height="326" fill="#2c3138" rx="3"/>
+  <circle cx="160" cy="395" r="7" fill="#8892a2"/>
+  <!-- 电子屏 -->
+  <rect x="200" y="300" width="70" height="46" fill="#0e1418" rx="4"/>
+  <text x="235" y="330" fill="#7fbf7f" font-size="18" text-anchor="middle" font-family="monospace">- - -</text>
+  <!-- 汽车 -->
+  <path d="M420 520 l40 -90 q8 -18 28 -18 h280 q20 0 30 18 l42 90 z" fill="#4a5668"/>
+  <rect x="400" y="510" width="490" height="70" rx="16" fill="#55637a"/>
+  <rect x="480" y="440" width="130" height="52" rx="8" fill="#8fa2b8" opacity=".85"/>
+  <rect x="630" y="440" width="130" height="52" rx="8" fill="#8fa2b8" opacity=".85"/>
+  <circle cx="490" cy="590" r="34" fill="#181a1e"/><circle cx="490" cy="590" r="14" fill="#3a3f46"/>
+  <circle cx="800" cy="590" r="34" fill="#181a1e"/><circle cx="800" cy="590" r="14" fill="#3a3f46"/>
+  <!-- 遮阳板（挡风玻璃上方） -->
+  <rect x="560" y="392" width="150" height="16" rx="6" fill="#2c3138"/>
+  <!-- 遥控器（工作台） -->
+  <rect x="220" y="470" width="150" height="90" fill="#3a3226" rx="4"/>
+  <rect x="258" y="498" width="56" height="26" rx="4" fill="#22262e"/>
+  <!-- 手套箱（车内侧） -->
+  <rect x="620" y="505" width="80" height="40" fill="#31363e" rx="4" stroke="#55637a"/>
+</svg>`}
+
+/* ---------- 物品特写占位 SVG ---------- */
+function closeupArt(emoji,bg){
+  return `<svg viewBox="0 0 300 220" xmlns="http://www.w3.org/2000/svg">
+  <rect width="300" height="220" rx="12" fill="${bg}"/>
+  <rect x="10" y="10" width="280" height="200" rx="10" fill="none" stroke="rgba(255,255,255,.12)"/>
+  <text x="150" y="130" font-size="86" text-anchor="middle">${emoji}</text></svg>`}
+
+/* ---------- 关卡配置（热点坐标 = 场景布局图坐标） ---------- */
+const ROOMS = {
+  study: {
+    name:"第 1 关 · 书房", bg:bgStudy, progress:0,
+    objects:[
+      {id:"bookshelf",     name:"📚 书架",   x:16, y:44, emoji:"📚", art:"#2c2118",
+       desc:"一排排旧书按年份排列。1934 年到 1998 年，唯独 1939 年那本是倒着插的。"},
+      {id:"picture_frame", name:"🖼 画框",   x:50, y:24, emoji:"🖼", art:"#33281a",
+       desc:"墙上的旧画框有些歪斜，画布一角翘了起来。"},
+      {id:"clock",         name:"🕰 钟表",   x:66, y:26, emoji:"🕰", art:"#2e2620",
+       desc:"老式挂钟，指针停着不动——齿轮箱少了一个零件。"},
+      {id:"desk",          name:"🪑 书桌",   x:41, y:62, emoji:"🗄", art:"#33281a",
+       desc:"书桌抽屉上着一把小锁。"}, 
+      {id:"safe",          name:"🔐 保险箱", x:78, y:64, emoji:"🔐", art:"#252a31",
+       desc:"半人高的保险箱，正面是 3 位转盘密码锁。", pwd:{len:3, code:"397", target:"safe"}},
+      {id:"door",          name:"🚪 书房门", x:8,  y:52, emoji:"🚪", art:"#2c2118",
+       desc:"通往客厅的木门，门锁是老式的弹子锁。"},
+    ],
+  },
+  living_room: {
+    name:"第 2 关 · 客厅", bg:bgLiving, progress:40,
+    objects:[
+      {id:"main_gate",    name:"🚪 大门",     x:8,  y:52, emoji:"🚪", art:"#2c2118",
+       desc:"你推了推大门——门轴被人从外面焊死了，从里面根本打不开。唯一出口是那扇带电子锁的车库门。"},
+      {id:"garage_door",  name:"🛗 车库门",   x:50, y:34, emoji:"🛗", art:"#2b2f36",
+       desc:"卷帘车库门，侧面装着 4 位电子密码屏。", pwd:{len:4, code:"3728", target:"garage_door"}},
+      {id:"tv_cabinet",   name:"📺 电视柜",   x:62, y:64, emoji:"📺", art:"#33281a",
+       desc:"电视柜上放着一本相册。"},
+      {id:"sofa",         name:"🛋 沙发",     x:18, y:66, emoji:"🛋", art:"#3a2620",
+       desc:"旧布艺沙发，靠背上搭着一根晾衣杆。"},
+      {id:"fridge",       name:"🧊 冰箱门",   x:82, y:48, emoji:"🧊", art:"#2e3438",
+       desc:"冰箱门上贴着三枚冰箱贴——红色圆形那枚有点翘边。"},
+      {id:"coffee_table", name:"🫖 茶几",     x:40, y:72, emoji:"🫖", art:"#33281a",
+       desc:"茶几上旧报纸下压着什么东西，旁边还有一袋没开封的鱼食。"},
+      {id:"wall_clock",   name:"🕰 墙上挂钟", x:66, y:24, emoji:"🕰", art:"#2e2620",
+       desc:"挂钟挂得比较高，够不到钟背。"},
+      {id:"fish_tank",    name:"🐟 角落鱼缸", x:86, y:66, emoji:"🐟", art:"#1e2a30",
+       desc:"角落的鱼缸，水很浑，看不清里面有几条鱼。"},
+    ],
+  },
+  garage: {
+    name:"第 3 关 · 车库", bg:bgGarage, progress:70,
+    objects:[
+      {id:"exit_door",  name:"🚪 卷帘门", x:8,  y:54, emoji:"🚪", art:"#2c3038",
+       desc:"车库唯一的出口。卷帘门死死压在轨道上，旁边电子屏亮着「---」。"},
+      {id:"keypad",     name:"⌨️ 电子屏", x:18, y:44, emoji:"⌨️", art:"#10161a",
+       desc:"电子屏显示「---」，上下键+确认键，按键被透明玻璃面板盖着。", pwd:{len:3, code:"529", target:"keypad"}},
+      {id:"remote",     name:"📻 遥控器", x:23, y:66, emoji:"📻", art:"#2e2a22",
+       desc:"外壳裂开，电池仓空空如也——彻底报废，用不上了。"},
+      {id:"car",        name:"🚗 汽车",   x:55, y:74, emoji:"🚗", art:"#2b3140",
+       desc:"落了灰的旧轿车，引擎盖好像没扣严。"},
+      {id:"tool_board", name:"🔨 挂墙工具板", x:44, y:32, emoji:"🔨", art:"#2b3140",
+       desc:"工具板旁的墙上挂着个旧铁皮盒，盒盖中央有个旋转刻度盘（1-12），停在 0。"},
+      {id:"tool_box",   name:"🧰 工具箱", x:40, y:62, emoji:"🧰", art:"#2b3140",
+       desc:"工具箱上挂着把挂锁，锁孔是老式钥匙孔，看着眼熟。"},
+    ],
+  },
+};
+
+/* ---------- 游戏状态（Mock） ---------- */
+const G = {
+  room:"study", inv:[], clues:[], used:new Set(), dial:0,
+  progress:{study:0, living_room:40, garage:70},
+};
+/* 铁皮盒刻度盘：向左/向右每次一格（1-12 循环），正好停在 6 弹开 */
+function stepDial(d){
+  G.dial = d>0 ? (G.dial>=12?1:G.dial+1) : (G.dial<=1?12:G.dial-1);
+  if(G.dial===6){
+    G.used.add("tin"); addItem("old_key");
+    addClue("刻度盘停在 6——铁皮盒弹开，里面有把旧钥匙");
+    narr("刻度盘正好停在 6——「咔哒」！旧铁皮盒弹开了。","narr-ok");
+  }else{
+    narr("刻度盘停在 "+G.dial+"——盒子毫无反应。（贴纸上的旋钮停在某个刻度……）");
+  }
+  openCloseup(curObj);   // 重渲染特写，刷新当前位置
+}
+const $=q=>document.querySelector(q);
+
+/* ---------- 旁白 ---------- */
+function narr(msg, cls){
+  const box=$("#narration");
+  box.querySelectorAll(".narr-new").forEach(n=>n.classList.replace("narr-new","narr-old"));
+  const div=document.createElement("div");
+  div.className="narr-new "+(cls||""); div.textContent=msg;
+  box.appendChild(div);
+  while(box.children.length>4) box.removeChild(box.firstChild);
+  box.scrollTop=box.scrollHeight;
+}
+
+/* ---------- 侧栏渲染 ---------- */
+let curTab="inv";
+function renderSide(){
+  document.querySelectorAll(".side-tab").forEach(t=>
+    t.classList.toggle("active", t.dataset.tab===curTab));
+  $("#invBadge").textContent=G.inv.length;
+  $("#clueBadge").textContent=G.clues.length;
+  const body=$("#sideBody");
+  if(curTab==="inv"){
+    body.innerHTML = G.inv.length
+      ? G.inv.map(i=>`<div class="inv-item" data-id="${i.id}"><span class="em">${i.icon}</span><span>${i.name}</span></div>`).join("")
+      : `<div class="empty-hint">背包是空的<br>去场景里找找可拾取的东西</div>`;
+    body.querySelectorAll(".inv-item").forEach(el=>
+      el.onclick=()=>inspectItem(el.dataset.id));
+  }else{
+    body.innerHTML = G.clues.length
+      ? G.clues.map(c=>`<div class="clue-item">${c}</div>`).join("")
+      : `<div class="empty-hint">还没有线索<br>查看物品和场景会记录到这里</div>`;
+  }
+}
+document.querySelectorAll(".side-tab").forEach(t=>
+  t.onclick=()=>{curTab=t.dataset.tab; renderSide();});
+
+/* ---------- 物品定义 ---------- */
+const ITEMS = {
+  key_half_a:{icon:"🗝",name:"半截钥匙 · 左",inspect:"锈迹斑斑的半截钥匙，断口平整——像被人刻意掰断的。"},
+  key_half_b:{icon:"🗝",name:"半截钥匙 · 右",inspect:"另半截钥匙，断口与左半完全吻合。"},
+  key_full:{icon:"🔑",name:"完整钥匙",inspect:"两半拼合后严丝合缝，钥匙柄上刻着一个小小的太阳。"},
+  code_paper:{icon:"📄",name:"泛黄密码纸",inspect:"角落潦草写着「第三位 — 7」。纸张背面印着淡淡的三格虚线。"},
+  gear:{icon:"⚙️",name:"小齿轮",inspect:"黄铜齿轮，尺寸和挂钟齿轮箱里的空位刚好一致。"},
+  study_key:{icon:"🔑",name:"书房门钥匙",inspect:"从保险箱里取出的黄铜钥匙，齿纹崭新。"},
+  receipt_note:{icon:"🧾",name:"外卖小票",inspect:"背面是爸爸的字迹：「密码按老规矩找：冰箱 → 挂钟 → 相册 → 鱼缸」。"},
+  fish_food:{icon:"🐟",name:"鱼食",inspect:"一袋没开封的鱼食——鱼缸那么浑，也许能用得上。"},
+  drying_pole:{icon:"🪝",name:"晾衣杆",inspect:"足够长的晾衣杆——墙上高的地方也许够得到。"},
+  fridge_magnet:{icon:"🧲",name:"红色圆形冰箱贴",inspect:"翻过背面，马克笔写着：「第1位：3」。"},
+  clock_plaque:{icon:"🕰",name:"挂钟背板",inspect:"木牌上刻着一行小字：「第2位：7」。"},
+  photo_album:{icon:"📷",name:"全家福相册",inspect:"全家福背面圆珠笔写着：「第3位：2」。"},
+  car_sticker:{icon:"🏷",name:"褪色贴纸",inspect:"引擎盖内侧磁性吸着的褪色贴纸：老式旋钮停在刻度 6。"},
+  old_key:{icon:"🗝",name:"旧钥匙",inspect:"铁皮盒里的旧钥匙，老式样式——工具箱的挂锁看着正合适。"},
+  note_529:{icon:"📜",name:"皱纸条",inspect:"纸条上用油笔写着三个数字：「5 2 9」。"},
+};
+
+/* ---------- 物品拾取 / 查看 ---------- */
+function addItem(id, silent){
+  if(G.inv.some(i=>i.id===id)) return false;
+  G.inv.push({id, name:ITEMS[id].name, icon:ITEMS[id].icon});
+  if(!silent) narr(`拾取了「${ITEMS[id].name}」→ 已放入背包`, "narr-ok");
+  renderSide(); return true;
+}
+function addClue(txt){
+  if(G.clues.includes(txt)) return;
+  G.clues.push(txt); narr(`💡 线索已记录：${txt}`); renderSide();
+}
+function removeItem(id){
+  G.inv=G.inv.filter(i=>i.id!==id); renderSide();
+}
+function inspectItem(id){
+  closeCloseup();
+  narr(`${ITEMS[id].icon} ${ITEMS[id].name}：${ITEMS[id].inspect}`);
+  addClue(`${ITEMS[id].name} — ${ITEMS[id].inspect}`);
+}
+
+/* ---------- 特写弹窗 ---------- */
+let curObj=null;
+function openCloseup(obj){
+  curObj=obj;
+  $("#closeupTitle").textContent=obj.name.replace(/^\S+\s/,"");
+  $("#closeupImg").innerHTML=closeupArt(obj.emoji, obj.art||"#221a26");
+  $("#closeupDesc").textContent=obj.desc;
+  const acts=$("#closeupActs"); acts.innerHTML="";
+  const cfg=ROOMS[G.room];
+
+  // 通用：查看
+  btn(acts,"🔍 仔细查看", ()=>{ narr(`你仔细看了看${obj.name.replace(/^\S+\s/,"")}。${obj.desc}`); addClue(`【${obj.name.replace(/^\S+\s/,"")}】${obj.desc}`);});
+
+  // 各对象专属动作
+  if(G.room==="study"){
+    if(obj.id==="picture_frame" && !G.used.has("pf"))
+      btn(acts,"🖼 掀开画框",()=>{ G.used.add("pf"); addItem("key_half_b");
+        addClue("画框后有暗格，藏着半截钥匙"); refresh();});
+    if(obj.id==="desk"){
+      if(G.used.has("desk_unlocked")) info(acts,"抽屉已打开：密码纸和齿轮已取走");
+      else if(G.inv.some(i=>i.id==="key_full"))
+        btn(acts,"🔑 使用完整钥匙",()=>{ G.used.add("desk_unlocked"); removeItem("key_full");
+          addItem("code_paper",true); addItem("gear");
+          addClue("密码纸：第三位 — 7"); G.progress.study=55; refresh();});
+      else info(acts,"🔒 抽屉上锁——需要一把完整的钥匙");
+    }
+    if(obj.id==="clock"){
+      if(G.used.has("clock_fixed")) info(acts,"时针指 3、分针指 9");
+      else if(G.inv.some(i=>i.id==="gear"))
+        btn(acts,"⚙️ 装上齿轮",()=>{ G.used.add("clock_fixed"); removeItem("gear");
+          addClue("挂钟走动：时针 3、分针 9"); G.progress.study=70; refresh();});
+      else info(acts,"齿轮箱里少一个零件");
+    }
+    if(obj.id==="safe"){
+      if(G.used.has("safe_open")) info(acts,"保险箱已打开，书房门钥匙已取走");
+      else btn(acts,"⌨️ 输入 3 位密码",()=>openPwd(obj.pwd),"primary");
+    }
+    if(obj.id==="door"){
+      if(G.inv.some(i=>i.id==="study_key"))
+        btn(acts,"🚪 使用书房门钥匙 → 前往客厅",()=>switchRoom("living_room"),"primary");
+      else info(acts,"门锁着——需要书房门钥匙");
+    }
+  }
+
+  if(G.room==="living_room"){
+    if(obj.id==="coffee_table"){
+      if(G.inv.some(i=>i.id==="receipt_note")) info(acts,"外卖小票已在背包");
+      else btn(acts,"🧾 拾取外卖小票",()=>{ addItem("receipt_note");
+        addClue("小票背面：密码按老规矩找——冰箱 → 挂钟 → 相册 → 鱼缸"); refresh();});
+      if(G.inv.some(i=>i.id==="fish_food")) info(acts,"鱼食已在背包");
+      else btn(acts,"🐟 拾取鱼食",()=>{ addItem("fish_food");
+        addClue("一袋没开封的鱼食"); refresh();});
+    }
+    if(obj.id==="fridge"){
+      if(!G.used.has("magnet")) btn(acts,"🧲 揭下红色圆形冰箱贴",()=>{ G.used.add("magnet");
+        addClue("红色冰箱贴已揭下——翻过背面看看"); refresh();});
+      else if(!G.inv.some(i=>i.id==="fridge_magnet"))
+        btn(acts,"🧲 拾取冰箱贴",()=>{ addItem("fridge_magnet");
+          addClue("冰箱贴背面马克笔：「第1位：3」"); refresh();});
+      else info(acts,"冰箱贴已收进背包");
+    }
+    if(obj.id==="wall_clock"){
+      if(!G.used.has("clock_lower")){
+        if(G.inv.some(i=>i.id==="drying_pole"))
+          btn(acts,"🪝 用晾衣杆挑下挂钟",()=>{ G.used.add("clock_lower");
+            addClue("挂钟挑下来了——背板刻着「第2位：7」"); G.progress.living_room=60; refresh();});
+        else info(acts,"挂得太高，够不到钟背——需要一件够得着高处的工具");
+      }else info(acts,"挂钟已挑下来：背板刻着「第2位：7」");
+    }
+    if(obj.id==="tv_cabinet"){
+      if(!G.inv.some(i=>i.id==="photo_album"))
+        btn(acts,"📷 翻开相册并收好",()=>{ addItem("photo_album");
+          addClue("全家福背面圆珠笔：「第3位：2」"); refresh();});
+      else info(acts,"相册已收进背包");
+    }
+    if(obj.id==="sofa"){
+      if(!G.inv.some(i=>i.id==="drying_pole"))
+        btn(acts,"🪝 拿起晾衣杆",()=>{ addItem("drying_pole");
+          addClue("一根够长的晾衣杆"); refresh();});
+      else info(acts,"晾衣杆已在背包");
+    }
+    if(obj.id==="fish_tank"){
+      if(!G.used.has("fish_fed")){
+        if(G.inv.some(i=>i.id==="fish_food"))
+          btn(acts,"🐟 撒下鱼食",()=>{ G.used.add("fish_fed"); removeItem("fish_food");
+            addClue("鱼群聚拢游过来，数一数正好 8 条（第4位：8）");
+            G.progress.living_room=68; refresh();});
+        else info(acts,"水太浑，看不清鱼——也许撒点吃的它们就来了");
+      }else info(acts,"鱼群游弋：正好 8 条（第4位：8）");
+    }
+    if(obj.id==="garage_door"){
+      if(G.used.has("l2_done")) info(acts,"车库门已打开");
+      else btn(acts,"⌨️ 输入 4 位密码",()=>openPwd(obj.pwd),"primary");
+    }
+  }
+
+  if(G.room==="garage"){
+    if(obj.id==="remote"){
+      info(acts,"外壳裂开、电池仓空——这台遥控器彻底报废了");
+    }
+    if(obj.id==="car"){
+      if(!G.used.has("hood")) btn(acts,"🚗 掀开引擎盖",()=>{ G.used.add("hood");
+        addClue("引擎盖内侧磁性吸着褪色贴纸：老式旋钮停在刻度 6"); refresh();});
+      else info(acts,"褪色贴纸：老式旋钮停在刻度 6");
+    }
+    if(obj.id==="tool_board"){
+      if(!G.used.has("tin")){
+        if(G.used.has("hood")){
+          info(acts,"🎛 旋转刻度盘 · 当前停在："+(G.dial||0));
+          btn(acts,"⬅ 向左旋转",()=>stepDial(-1));
+          btn(acts,"向右旋转 ➡",()=>stepDial(1),"primary");
+        }else info(acts,"刻度盘停在 0——好像在等一个正确的刻度（哪里见过这个旋钮？）");
+      }else info(acts,"铁皮盒已打开：旧钥匙已取走");
+    }
+    if(obj.id==="tool_box"){
+      if(!G.used.has("padlock")){
+        if(G.inv.some(i=>i.id==="old_key"))
+          btn(acts,"🗝 用旧钥匙开挂锁",()=>{ G.used.add("padlock"); removeItem("old_key");
+            addItem("note_529"); addClue("纸条：「5 2 9」"); refresh();},"primary");
+        else info(acts,"🔒 挂锁锁着，锁孔是老式钥匙孔");
+      }else info(acts,"纸条：「5 2 9」");
+    }
+    if(obj.id==="keypad"){
+      if(!G.used.has("l3_screen")) btn(acts,"⌨️ 输入 3 位密码",()=>openPwd(obj.pwd),"primary");
+      else btn(acts,"⬆⬇ 电子屏（上下箭头）",openArrowModal,"primary");
+    }
+    if(obj.id==="exit_door"){
+      if(G.used.has("l3_shutter")) btn(acts,"🚶 走出卷帘门 → 逃出密室",()=>win("卷帘门"),"primary");
+      else info(acts,"卷帘门死死压在轨道上——旁边电子屏亮着「---」");
+    }
+  }
+
+  $("#modalMask").classList.add("show");
+}
+function btn(parent,text,fn,cls){const b=document.createElement("button");
+  b.className="act-btn"+(cls?" "+cls:""); b.textContent=text; b.onclick=fn; parent.appendChild(b);}
+function info(parent,text){const d=document.createElement("div");
+  d.className="act-btn"; d.disabled=true; d.textContent=text; parent.appendChild(d);}
+function closeCloseup(){$("#modalMask").classList.remove("show");}
+$("#closeupClose").onclick=closeCloseup;
+$("#modalMask").onclick=e=>{if(e.target.id==="modalMask")closeCloseup();};
+
+/* ---------- 密码弹窗 ---------- */
+let pwdBuf="", pwdCfg=null;
+function openPwd(cfg){
+  pwdCfg=cfg; pwdBuf="";
+  $("#pwdTitle").textContent="输入密码";
+  $("#pwdSub").textContent=`${cfg.len} 位数字密码`;
+  renderDots(); renderPad();
+  $("#pwdMsg").textContent="";
+  $("#pwdMask").classList.add("show");
+}
+function renderDots(){
+  $("#pwdDots").innerHTML=Array.from({length:pwdCfg.len},(_,i)=>
+    `<div class="pwd-dot">${pwdBuf[i]||""}</div>`).join("");
+}
+function renderPad(){
+  const keys=["1","2","3","4","5","6","7","8","9","C","0","OK"];
+  $("#pwdPad").innerHTML=keys.map(k=>
+    `<div class="pad-key ${k==="OK"?"ok":k==="C"?"cancel":""}" data-k="${k}">${k}</div>`).join("");
+  document.querySelectorAll(".pad-key").forEach(el=>el.onclick=()=>padPress(el.dataset.k));
+}
+function padPress(k){
+  const msg=$("#pwdMsg");
+  if(k==="C"){pwdBuf=""; msg.textContent=""; }
+  else if(k==="OK"){
+    if(pwdBuf.length<pwdCfg.len){msg.textContent=`还差 ${pwdCfg.len-pwdBuf.length} 位`;return;}
+    if(pwdBuf===pwdCfg.code){ pwdOk(); return; }
+    msg.textContent="密码错误，锁纹丝不动。"; pwdBuf="";
+  }
+  else if(pwdBuf.length<pwdCfg.len) pwdBuf+=k;
+  renderDots();
+}
+function pwdOk(){
+  $("#pwdMask").classList.remove("show");
+  const cfg=pwdCfg;
+  if(cfg.target==="safe"){
+    G.used.add("safe_open"); addItem("study_key");
+    addClue("保险箱 397 开启，取得书房门钥匙"); G.progress.study=85;
+    narr("转盘咔哒三声——保险箱开了，里面是一把黄铜钥匙。","narr-ok");
+  }
+  if(cfg.target==="garage_door"){
+    G.used.add("l2_done");
+    addClue("车库门密码 3728 正确"); G.progress.living_room=80;
+    narr("电子屏绿灯亮起，卷帘门缓缓升起——你走进了车库。","narr-ok");
+    setTimeout(()=>switchRoom("garage"),1200);
+  }
+  if(cfg.target==="keypad"){
+    G.used.add("l3_screen");
+    addClue("电子屏 529 正确，绿灯亮起、玻璃面板弹开");
+    narr("屏幕亮起绿灯，透明玻璃面板「咔」地弹开——露出上、下两个箭头键。","narr-ok");
+  }
+  refresh();
+}
+$("#pwdMask").onclick=e=>{if(e.target.id==="pwdMask")$("#pwdMask").classList.remove("show");};
+
+/* 电子屏上下箭头弹窗：只有 ↑↓ 两个按钮，按门态分流
+   门未开：↑ 升起卷帘门 / ↓ 没有动静；门已开：↑ 没有动静 / ↓ 落下卷帘门 */
+function openArrowModal(){
+  const mask=document.createElement("div");
+  mask.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:300;display:flex;align-items:center;justify-content:center;";
+  const box=document.createElement("div");
+  box.style.cssText="background:#241f30;border:1px solid #c9a86a;border-radius:12px;padding:22px;min-width:260px;text-align:center;color:#e8e2d5;";
+  box.innerHTML='<h3 style="color:#c9a86a;margin:0 0 16px;font-size:16px;">⬆⬇ 电子屏 · 玻璃面板已弹开</h3>';
+  const bcss="display:block;width:100%;margin:8px 0;padding:12px 0;border-radius:8px;border:1px solid #4a4258;background:#2a2436;color:#e8e2d5;font-size:16px;cursor:pointer;";
+  const up=document.createElement("button");
+  up.textContent="⬆ 向上箭头"; up.style.cssText=bcss;
+  up.onclick=()=>{ mask.remove();
+    if(G.used.has("l3_shutter")){ narr("卷帘门已经升到顶了——再按向上箭头，电机只空转了一声，没有别的动静。"); }
+    else{ G.used.add("l3_shutter"); addClue("卷帘门缓缓升起");
+      narr("你按下向上箭头——卷帘门在电机声中缓缓升起！","narr-ok");
+      G.progress.garage=95; }
+    refresh();};
+  const down=document.createElement("button");
+  down.textContent="⬇ 向下箭头"; down.style.cssText=bcss;
+  down.onclick=()=>{ mask.remove();
+    if(!G.used.has("l3_shutter")){ narr("你按下向下箭头——没有任何动静。卷帘门纹丝不动。"); }
+    else{ G.used.delete("l3_shutter"); addClue("卷帘门落回轨道");
+      narr("你按下向下箭头——卷帘门轰隆隆落下，重新压回轨道。（再按向上箭头可重新升起）");
+      G.progress.garage=85; }
+    refresh();};
+  box.appendChild(up); box.appendChild(down);
+  mask.appendChild(box); document.body.appendChild(mask);
+  mask.onclick=e=>{if(e.target===mask)mask.remove();};
+}
+
+/* ---------- 通关（白底全屏结算界面） ---------- */
+function win(how){
+  addClue(`通关方式：${how}`);
+  G.progress.garage=100; refresh();
+  const ov=document.createElement("div");
+  ov.style.cssText="position:fixed;inset:0;background:#fff;z-index:400;display:flex;align-items:center;justify-content:center;";
+  ov.innerHTML='<div style="text-align:center;color:#1a1622;padding:40px;max-width:560px;">'
+    +'<h2 style="font-size:36px;margin:0 0 14px;">🏆 通关！</h2>'
+    +'<p style="color:#4a4458;line-height:1.9;margin:0 0 28px;">你走出卷帘门，逃出了密室！（'+how+' 通关）</p>'
+    +'<button onclick="location.reload()" style="background:#1a1622;color:#fff;border:none;padding:12px 36px;border-radius:8px;font-size:16px;cursor:pointer;">再玩一次</button>'
+    +'</div>';
+  document.body.appendChild(ov);
+}
+
+/* ---------- 关卡切换 ---------- */
+function switchRoom(id){
+  if(id==="living_room" && G.room==="study"){addItem("demo_note",true); removeItem("demo_note");}
+  G.room=id;
+  renderRoom(); closeCloseup();
+  const names={study:"书房", living_room:"客厅", garage:"车库"};
+  narr(`—— 你来到了${names[id]} ——`);
+}
+document.querySelectorAll(".lvl-tab").forEach(t=>
+  t.onclick=()=>{switchRoom(t.dataset.lvl);
+    document.querySelectorAll(".lvl-tab").forEach(x=>x.classList.toggle("active",x===t));});
+
+/* ---------- 场景渲染 ---------- */
+function renderRoom(){
+  const cfg=ROOMS[G.room];
+  $("#levelName").textContent=cfg.name;
+  $("#bgHolder").innerHTML=cfg.bg();
+  $("#hotspotHolder").innerHTML=cfg.objects.map(o=>
+    `<button class="hotspot" style="left:${o.x}%;top:${o.y}%" data-id="${o.id}">${o.name}</button>`).join("");
+  document.querySelectorAll(".hotspot").forEach(el=>
+    el.onclick=()=>openCloseup(cfg.objects.find(o=>o.id===el.dataset.id)));
+  refresh();
+}
+function refresh(){
+  const p=G.progress[G.room];
+  $("#progressBar").style.width=p+"%";
+  $("#progressTxt").textContent=p+"%";
+  renderSide();
+}
+
+/* ---------- 启动 ---------- */
+renderRoom();
+narr("你在一间陌生的书房里醒来。唯一的出路，是一环扣一环的谜。");
+narr("（布局示例：点击场景热点查看特写，右侧栏管理背包与线索。纯前端 Mock，未连后端。）");
+</script>
+</body>
+</html>
