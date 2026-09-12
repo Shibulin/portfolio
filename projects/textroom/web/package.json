@@ -1,0 +1,20 @@
+{
+  "name": "textroom-web",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "TextRoom 密室逃脱 · Vue 3 前端（组件化重构版）",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "pinia": "^4.0.3",
+    "vue": "^3.5.42"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^6.0.8",
+    "vite": "^8.3.0"
+  }
+}
