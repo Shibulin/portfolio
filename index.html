@@ -330,12 +330,14 @@ img.shot {
         <p data-page-node-id="39f5wKyzKS5vJfHzkDVpaA">纯文字交互的网页密室逃脱：玩家在三间密室里通过点击探索、组合道具、破解密码逃出。同时验证「LLM 只叙事、不裁决」的边界——AI 负责旁白润色，谜题正确性由服务端保证，避免大模型编造线索把玩家带进死局。</p>
         <h5 data-page-node-id="cD7SfI8fTfejuHY2mxFF9L">我负责的部分</h5>
         <ul data-page-node-id="fZ6QYk9oQrwf4mDVE5VUDD">
-            <li data-page-node-id="TubEVhISTVzsQ8h2fdTq0a">独立完成全部工作：3 关剧本与谜题链设计、FastAPI 后端状态机、原生 JS 沉浸式前端、AI 场景美术、自动化测试与通关演示录制。</li>
+            <li data-page-node-id="TubEVhISTVzsQ8h2fdTq0a">独立完成全部工作：3 关剧本与谜题链设计、FastAPI 后端状态机、Vue 3 组件化前端（由原生 JS 版重构而来）、AI 场景美术、自动化测试与通关演示录制。</li>
         </ul>
 
         <h5 data-page-node-id="JOUclUocGVXmlVXb5pCqAp">关键实现</h5>
         <ul data-page-node-id="mQI4mXNtuaPN8dCtxBB6gF">
-            <li data-page-node-id="GjIIDw88Df8Wbgpm9gwL66">设计 3 关卡、20 个可交互对象的解谜主线，实现查看/拾取/组合/密码/转盘/开关等 12 类交互动作的统一分发接口；后端 1564 行 + 前端 747 行。</li>
+            <li data-page-node-id="NwVue3Re1fRaMewOrKcK1a">将 680 行原生 JS 前端重构为 Vue 3 组件化架构：11 个单文件组件 + Pinia 状态层，服务端整包响应经 computed 派生驱动视图，消除原版全部手动 DOM 更新代码；用 Vite 构建，产物 gzip 后 33.3 kB。</li>
+            <li data-page-node-id="QxVueRef2DoM0Contract">重构全程冻结原版并保留一键回退：以原版选择器作为 DOM 契约，4 套 Playwright 冒烟脚本零改动通过；封面/全景/特写/侧栏四张截图与原版逐像素比对，三张零差异、第四张 0.28% 差异经核实为 LLM 旁白随机生成。</li>
+            <li data-page-node-id="GjIIDw88Df8Wbgpm9gwL66">设计 3 关卡、20 个可交互对象的解谜主线，实现查看/拾取/组合/密码/转盘/开关等 12 类交互动作的统一分发接口；后端 1345 行。</li>
             <li data-page-node-id="mNA0oSvRmHOa8GpKzKsrKk">接入 DeepSeek 实时生成沉浸式旁白；以白名单限制其只读状态快照、关键旗标由确定性逻辑驱动，移除 2 处易死锁的写权限，保证三关唯一解、无卡死分支。</li>
             <li data-page-node-id="vMYgUYZdyrByRq2QNnCrlf">Pydantic 统一建模全局存档 GameState；线索去重且跨关隔离、同源道具唯一，避免道具重复获取导致推理链断裂。</li>
             <li data-page-node-id="NnJgP9ip0dw7OnCzxtP0XK">AI 生成 25 张 1600×900 场景美术图（全景 + 特写），PIL 批量去水印与构图矫正。</li>
@@ -356,7 +358,9 @@ img.shot {
             <span class="tag" data-page-node-id="CxUlhfFQbhPHiLmGWWMHmY">Python</span>
             <span class="tag" data-page-node-id="UbTlzkM61dgvnfCb5k0QcX">FastAPI</span>
             <span class="tag" data-page-node-id="qADTmFmbTPgjiAtWMtjHmf">DeepSeek API</span>
-            <span class="tag" data-page-node-id="C0NYIlAFAIs73NWEOcHR7p">原生 JS</span>
+            <span class="tag" data-page-node-id="C0NYIlAFAIs73NWEOcHR7p">Vue 3</span>
+            <span class="tag" data-page-node-id="Pin1aState0Tag0xx0">Pinia</span>
+            <span class="tag" data-page-node-id="Vite0Build0Tag0xx0">Vite</span>
             <span class="tag" data-page-node-id="Z5BB11Pwdy8FSrwBJQdWv4">PIL</span>
             <span class="tag" data-page-node-id="dF2U31rDYCBIfx33Kof6cq">Playwright</span>
             <span class="tag" data-page-node-id="yeQgHhEOk3tNtvFGPZI1HG">独立完成</span>
@@ -509,13 +513,13 @@ img.shot {
         <div class="stack-row" data-page-node-id="t8yvBl9SKmXJM4GjakepJU">
             <span class="stack-k" data-page-node-id="BSu7cC03MdY4ygaVDUOWuD">语言与框架</span>
             <span class="stack-v" data-page-node-id="YNU2vsIFgl0NlV26LwKfAY">
-                <span class="tag" data-page-node-id="7kPaqHEZPbNL8xXQTxG0Uc">Python</span><span class="tag" data-page-node-id="zLbDYAnQkaobmH5AHX4ya4">JavaScript</span><span class="tag" data-page-node-id="pzC3V2ArZtMJJ5NmbBwtGG">HTML / CSS</span><span class="tag" data-page-node-id="U4MV2LgsDFYHfQIlJSBcVg">C#</span><span class="tag" data-page-node-id="znYKCL4vT4p9LdBOhSXGdq">Flask</span><span class="tag" data-page-node-id="4LdHqSmxkq5zxb4lKiRxuC">FastAPI</span><span class="tag">Canvas 2D</span>
+                <span class="tag" data-page-node-id="7kPaqHEZPbNL8xXQTxG0Uc">Python</span><span class="tag" data-page-node-id="zLbDYAnQkaobmH5AHX4ya4">JavaScript</span><span class="tag" data-page-node-id="pzC3V2ArZtMJJ5NmbBwtGG">HTML / CSS</span><span class="tag" data-page-node-id="U4MV2LgsDFYHfQIlJSBcVg">C#</span><span class="tag" data-page-node-id="znYKCL4vT4p9LdBOhSXGdq">Vue 3</span><span class="tag" data-page-node-id="Pin1aState0Tag1xx0">Pinia</span><span class="tag" data-page-node-id="znYKCL4vT4p9LdBOhSXGdq2">Flask</span><span class="tag" data-page-node-id="4LdHqSmxkq5zxb4lKiRxuC">FastAPI</span><span class="tag">Canvas 2D</span>
             </span>
         </div>
         <div class="stack-row" data-page-node-id="Cb1J5lhiC3QREUd21t5vMa">
             <span class="stack-k" data-page-node-id="ecHLB3lYD1hHoyD6nUx7D0">工具与平台</span>
             <span class="stack-v" data-page-node-id="8J9d76KbdJ1MuyMVPin6Vq">
-                <span class="tag" data-page-node-id="PuWgrfTbKCzmSYHOTbaaDo">Unity</span><span class="tag" data-page-node-id="nkQTedrywhcvLHR3HnMRO6">Figma</span><span class="tag" data-page-node-id="RDEWNoHlgxqP2Rr1nhciIW">Git</span><span class="tag" data-page-node-id="gHu2rZjfsDKrOCg8vzDvlH">Whisper</span><span class="tag" data-page-node-id="2safsYiwIzR8BN12cCKFzg">Playwright</span><span class="tag" data-page-node-id="ChH9COCz7J0HMUCSG6U0AI">Photoshop</span><span class="tag">DeepSeek API</span><span class="tag">PIL</span>
+                <span class="tag" data-page-node-id="PuWgrfTbKCzmSYHOTbaaDo">Unity</span><span class="tag" data-page-node-id="Figma0Tag0xx0ref">Figma</span><span class="tag" data-page-node-id="Vite1Build1Tag1xx1">Vite</span><span class="tag" data-page-node-id="RDEWNoHlgxqP2Rr1nhciIW">Git</span><span class="tag" data-page-node-id="gHu2rZjfsDKrOCg8vzDvlH">Whisper</span><span class="tag" data-page-node-id="2safsYiwIzR8BN12cCKFzg">Playwright</span><span class="tag" data-page-node-id="ChH9COCz7J0HMUCSG6U0AI">Photoshop</span><span class="tag">DeepSeek API</span><span class="tag">PIL</span>
             </span>
         </div>
         <div class="stack-row" data-page-node-id="aCay216g4QVqOhCfXDrwGf">
