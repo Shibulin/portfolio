@@ -1,0 +1,21 @@
+# 静态资源长缓存。
+#
+# 为什么需要：Netlify 默认对「所有」文件都返回
+#   Cache-Control: public,max-age=0,must-revalidate
+# 也就是每次都算过期，浏览器必须对页面上 20 多个资源逐个回源校验（304）。
+# 流量是省了，但每个资源仍要等一趟网络往返 —— 手机弱网下看到的就是图片逐张往外蹦。
+#
+# 策略：/assets/* 用 7 天强缓存 + 30 天后台更新窗口
+#   - 7 天内     ：不发任何请求，直接读本地副本
+#   - 7~37 天    ：立即用旧副本渲染，同时后台异步拉新版（stale-while-revalidate）
+#   - 37 天后    ：正常请求
+# 这样复访永不阻塞，也不必约定「改资源就必须改名」（最长 37 天后自动对齐新版）。
+#
+# index.html 刻意不设长缓存，保持 Netlify 默认值，保证每次都能拿到最新页面。
+#
+# 注意：本文件不写 [build] 段，因此 Netlify 面板里的 build command / publish
+# 目录设置继续生效，不会被这里覆盖。
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=604800, stale-while-revalidate=2592000"
